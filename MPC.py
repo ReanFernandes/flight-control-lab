@@ -58,9 +58,9 @@ def MPC(degree, Q, R, function_type, x_init, x_desired, N, T, Tf, numerical_meth
         
         if numerical_method == "multiple_shooting":
             X_mpc[i+1,:] = w_opt[nx+nu:nx+nu+nx]
-            U_mpc[i,:] = w_opt[N*nx:N*nx+nu]
+            U_mpc[i,:] = w_opt[nx:nx+nu]
         elif numerical_method == "direct_collocation":
-            X_mpc[i+1,:] = w_opt[nx+nu +nx*degree:nx+nu+nx*(degree+1)]
+            X_mpc[i+1,:] = w_opt[nx+nu +nx*(degree):nx+nu+nx*(degree+1)]
             U_mpc[i,:] = w_opt[nx:nx+nu]
             # print('X_mpc: ', X_mpc[i+1,:])
         print('X_mpc: ', X_mpc[i+1,:])

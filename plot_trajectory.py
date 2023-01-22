@@ -2,12 +2,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def plot_trajectory(X_mpc):
+def plot_trajectory(X_mpc, function_type, numerical_method):
     #define 3d plot to plot trajectory of the drone
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     #plot the trajectory of the drone
-    ax.plot(X_mpc[:,0], X_mpc[:,1], X_mpc[:,2])
+    ax.plot(X_mpc[:,0], X_mpc[:,1], X_mpc[:,2], 'o')
     #set the title of the plot
     ax.set_title('Trajectory of the drone')
     #set the label of the x axis
@@ -17,5 +17,4 @@ def plot_trajectory(X_mpc):
     #set the label of the z axis
     ax.set_zlabel('z [m]')
     #show the plot
-    plt.show()
-    
+    plt.savefig('trajectory_' + function_type + '_' + numerical_method + '.png')
