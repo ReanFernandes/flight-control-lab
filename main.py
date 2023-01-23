@@ -7,7 +7,7 @@ def main():
     # define the parameters 
     # Multiple Shooting
     N_dms = 10
-    T_dms = 0.001
+    T_dms = 0.01
     Tf_dms = 10
     nlpopts_dms = {'ipopt': {'print_level': 0, 'max_iter':200}, 'print_time' : 0}
 
@@ -35,8 +35,8 @@ def main():
     R = np.diag([1, 1, 1, 1])* 0.6
 
     # define the starting point
-    x_init = np.array([4, 7, 5])
-    x_desired = np.array([0, -2, 3])
+    x_init = np.array([0, 3, 0])
+    x_desired = np.array([1, 2, 9])
 
     # Thrust controlled MPC 
     function_type = "force_control"
