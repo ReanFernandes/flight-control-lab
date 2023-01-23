@@ -7,15 +7,15 @@ def main():
     # define the parameters 
     # Multiple Shooting
     N_dms = 10
-    T_dms = 0.01
+    T_dms = 0.001
     Tf_dms = 10
-    nlpopts_dms = {'ipopt': {'print_level': 0, 'max_iter':500}, 'print_time' : 0}
+    nlpopts_dms = {'ipopt': {'print_level': 0, 'max_iter':200}, 'print_time' : 0}
 
     # Direct Collocation
     N_dc = 5
-    T_dc = 0.01
+    T_dc = 0.001
     Tf_dc = 10
-    nlpopts_dc = {'ipopt': {'print_level': 0, 'max_iter':100}, 'print_time' : 0}
+    nlpopts_dc = {'ipopt': {'print_level': 0, 'max_iter':200}, 'print_time' : 0}
     degree = 2
 
 
@@ -44,12 +44,12 @@ def main():
     # Multiple Shooting
     X_mpc_dms_force, U_mpc_dms_force, deviation, step = MPC_multiple_shooting(Q, R, function_type, x_init, x_desired, N_dms, T_dms, Tf_dms, nlpopts_dms)
     plot_state_trajectory(X_mpc_dms_force, U_mpc_dms_force, deviation, step, function_type, 'DMS', x_init, x_desired)
-    plot_drone_trajectory(X_mpc_dms_force, function_type, 'DMS', x_init, x_desired)
+    plot_drone_trajectory(X_mpc_dms_force, function_type, 'DMS', x_init, x_desired,step)
 
     # Direct Collocation
     X_mpc_dc_force, U_mpc_dc_force, deviation, step = MPC_collocation(degree,Q, R, function_type, x_init, x_desired, N_dc, T_dc, Tf_dc, nlpopts_dc)
     plot_state_trajectory(X_mpc_dc_force, U_mpc_dc_force, deviation, step, function_type, 'DC', x_init, x_desired)
-    plot_drone_trajectory(X_mpc_dc_force, function_type, 'DC', x_init, x_desired)
+    plot_drone_trajectory(X_mpc_dc_force, function_type, 'DC', x_init, x_desired, step)
 
     # # RPM controlled MPC
     # function_type = "rpm_control"

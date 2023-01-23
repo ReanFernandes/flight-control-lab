@@ -161,6 +161,7 @@ def NLP_direct_collocation(degree, Q, R, function_type, N, T, nlpopts = None):
         lbw += [*lower_pose, *lower_att, *lower_vel, *lower_rate]
         ubw += [*upper_pose, *upper_att, *upper_vel, *upper_rate]
         w0 += [*initial_guess_state]
+        
 
         # Add equality constraint
         g += [Xk_end-Xk]

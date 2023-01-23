@@ -99,27 +99,27 @@ def MPC_collocation(degree, Q, R, function_type, x_init, x_desired, N, T, Tf, nl
 
     # set optimisation variables
     w_opt = np.zeros(len(w0))
-
+    print('size of w_opt: ', w_opt.shape)
     X_mpc = np.zeros((N_sim+1, nx))
     U_mpc = np.zeros((N_sim, nu))
     stable_state_counter = 0
     # set the start state in X_mpc
     X_mpc[0,:] = x0
     timer = 0
-    shift = [*np.zeros(nx), *np.zeros(nu)]
+    shift = [*np.zeros(nx+ nu + nx*degree )]
     deviation = []
     for i in range(N_sim):
         start = time.time()
         print('step: ', i)
         #shift initialisation
-        w0 = [*w_opt[nx+nu:], *shift]
-
+        w0 = [*w_opt[nx+nu + nx *degree:], *shift]
+        # w0 = w_opt
         # Solve the NLP
         sol = solver(x0=w0, lbx=lbw, ubx=ubw, lbg=lbg, ubg=ubg, p=vertcat(X_mpc[i,:], x_ref) )
         w_opt = sol['x'].full().flatten()
 
         # Retrieve the solution
-        X_mpc[i+1,:] = w_opt[nx+nu +nx*(degree):nx+nu+nx*(degree)+nx]
+        X_mpc[i+1,:] = w_opt[nx + nu +nx*degree :nx + nu +nx*degree  + nx]
         print('X_mpc: ', X_mpc[i+1,:])
         U_mpc[i,:] = w_opt[nx:nx+nu] # this is the first control input
         print('U_mpc: ', U_mpc[i,:])
