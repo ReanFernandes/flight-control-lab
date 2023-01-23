@@ -6,8 +6,11 @@ def plot_drone_trajectory(X_mpc, function_type, numerical_method, x_init, x_desi
     #define 3d plot to plot trajectory of the drone
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
+    # add the initial state and desired state to the plot of the trajectory and label them
+    ax.scatter(x_init[0], x_init[1], x_init[2], c='r', marker='*', label='initial state')
+    ax.scatter(x_desired[0], x_desired[1], x_desired[2], c='g', marker='*', label='desired state')
     #plot the trajectory of the drone
-    ax.plot(X_mpc[:,0], X_mpc[:,1], X_mpc[:,2], 'o')
+    ax.plot(X_mpc[:,0], X_mpc[:,1], X_mpc[:,2], 'o-')
     #set the title of the plot
     ax.set_title('Trajectory of the drone')
     #set the label of the x axis
@@ -16,14 +19,18 @@ def plot_drone_trajectory(X_mpc, function_type, numerical_method, x_init, x_desi
     ax.set_ylabel('y [m]')
     #set the label of the z axis
     ax.set_zlabel('z [m]')
+    #set the legend of the plot
+    ax.legend()
     #save the figure to a png file in the folder drone_trajectory
+    x_init = ','.join(str(x_init) for x_init in x_init)
+    x_desired = ','.join(str(x_desired) for x_desired in x_desired)
     if numerical_method == 'DMS':
         plt.savefig('drone_trajectory/DMS/'+ x_init + ' to ' + x_desired + '_' + function_type + '_.png')
     
     elif numerical_method == 'DC':
         plt.savefig('drone_trajectory/DC/'+ x_init + ' to ' + x_desired + '_' + function_type + '_.png')
     
-def plot_state_trajectory(X_mpc, U_mpc, deviation, step, function_type, numerical_method):
+def plot_state_trajectory(X_mpc, U_mpc, deviation, step, function_type, numerical_method, x_init, x_desired):
     
     #define the figure
     fig = plt.figure()
@@ -76,12 +83,14 @@ def plot_state_trajectory(X_mpc, U_mpc, deviation, step, function_type, numerica
         ax7.set_title('Deviation')
         ax7.set_ylabel('m')
         ax7.legend()
+
+        x_init = ','.join(str(x_init) for x_init in x_init)
+        x_desired = ','.join(str(x_desired) for x_desired in x_desired)
         #save the figure to a png file in the folder state_trajectory
         if numerical_method == 'DMS':
-            plt.savefig('state_trajectory/DMS/'+ step + '_' + function_type + '_.png')
+            plt.savefig('state_trajectory/DMS/'+ x_init + ' to ' + x_desired + '_' + function_type + '_.png')
         elif numerical_method == 'DC':
-            plt.savefig('state_trajectory/DC/'+ step + '_' + function_type + '_.png')
-    
+            plt.savefig('state_trajectory/DC/'+ x_init + ' to ' + x_desired + '_' + function_type + '_.png')
     elif function_type == 'rpm_control':
         n = 6
         # plot the trajectories
@@ -126,11 +135,14 @@ def plot_state_trajectory(X_mpc, U_mpc, deviation, step, function_type, numerica
         ax6.set_title('Deviation')
         ax6.set_ylabel('m')
         ax6.legend()
+
+        # convert the initial and desired state to string
+        x_init = ','.join(str(x_init) for x_init in x_init)
+        x_desired = ','.join(str(x_desired) for x_desired in x_desired)
         #save the figure to a png file in the folder state_trajectory
         if numerical_method == 'DMS':
-            plt.savefig('state_trajectory/DMS/'+ step + '_' + function_type + '_.png')
+            plt.savefig('state_trajectory/DMS/'+ x_init + ' to ' + x_desired + '_' + function_type + '_.png')
         elif numerical_method == 'DC':
-            plt.savefig('state_trajectory/DC/'+ step + '_' + function_type + '_.png')
-
+            plt.savefig('state_trajectory/DC/'+ x_init + ' to ' + x_desired + '_' + function_type + '_.png')
 
     

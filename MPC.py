@@ -23,8 +23,8 @@ def MPC_multiple_shooting( Q, R, function_type, x_init, x_desired, N, T, Tf, nlp
 
     # set optimisation variables
     w_opt = np.zeros(len(w0))
-    if function_type == "rpm_control":
-        w_opt[nx:nx+nu] = np.array([22, 22, 22, 22])
+    # if function_type == "rpm_control":
+    #     w_opt[nx:nx+nu] = np.array([22, 22, 22, 22])
 
     X_mpc = np.zeros((N_sim+1, nx))
     U_mpc = np.zeros((N_sim, nu))
@@ -73,12 +73,15 @@ def MPC_multiple_shooting( Q, R, function_type, x_init, x_desired, N, T, Tf, nlp
         if total_deviation < 0.01:
             stable_state_counter += 1
             if stable_state_counter == 10:
-                print('MPC converged in ', i * T , ' s MPC time')
+                print('MPC converged in ', i ,' steps')
                 break
         end_time = time.time()
         timer += end_time - start
 
-    print('Total time taken by Multiple shooting,for  '+ function_type +' = ',+ timer+ ' s')
+    # print the function type and time
+    print('Function type: ', function_type)
+    print('Time: ', timer, 's')
+
     return X_mpc, U_mpc, deviation, i
 
 def MPC_collocation(degree, Q, R, function_type, x_init, x_desired, N, T, Tf, nlpopts = None):
@@ -116,8 +119,10 @@ def MPC_collocation(degree, Q, R, function_type, x_init, x_desired, N, T, Tf, nl
         w_opt = sol['x'].full().flatten()
 
         # Retrieve the solution
-        X_mpc[i+1,:] = w_opt[nx+nu +nx*(degree):nx+nu+nx*(degree+1)]
+        X_mpc[i+1,:] = w_opt[nx+nu +nx*(degree):nx+nu+nx*(degree)+nx]
+        print('X_mpc: ', X_mpc[i+1,:])
         U_mpc[i,:] = w_opt[nx:nx+nu] # this is the first control input
+        print('U_mpc: ', U_mpc[i,:])
 
         pose_deviation = np.linalg.norm(X_mpc[i+1,0:3] - x_desired)
         print('Deviation in euclidean distance: ', pose_deviation, 'm')
@@ -130,16 +135,19 @@ def MPC_collocation(degree, Q, R, function_type, x_init, x_desired, N, T, Tf, nl
             print('MPC failed to converge after ',i,' steps')
             break
 
-        if total_deviation < 0.01:
+        if total_deviation < 0.1:
             stable_state_counter += 1
             if stable_state_counter == 10:
-                print('MPC converged in ', i * T , ' s MPC time')
+                print('MPC converged in ', i, ' steps')
                 break
 
         end_time = time.time()
         timer += end_time - start
 
-    print('Total time taken by Direct Collocation MPC for '+function_type + ' = ' + timer + ' s')
+    # print method type, function type and time
+    print('Method type: Direct Collocation')
+    print('Function type: ', function_type)
+    print('Time: ', timer, 's')
     return X_mpc, U_mpc, deviation, i
 
 
