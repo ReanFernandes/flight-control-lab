@@ -64,7 +64,7 @@ def MPC_multiple_shooting( Q, R, function_type, x_init, x_desired, N, T, Tf, nlp
         print('Deviation in euclidean distance: ', pose_deviation, 'm')
         deviation.append(pose_deviation)
         total_deviation = np.linalg.norm(X_mpc[i+1,:] - x_ref)
-
+        print('Total deviation of current state vector from the desired state vector: ', total_deviation)
         # Implement stopping conditions
         if i == N_sim-1:
             print('MPC failed to converge after ',i,' steps')
@@ -72,7 +72,7 @@ def MPC_multiple_shooting( Q, R, function_type, x_init, x_desired, N, T, Tf, nlp
 
         if total_deviation < 0.01:
             stable_state_counter += 1
-            if stable_state_counter == 300:
+            if stable_state_counter == 30:
                 print('MPC converged in ', i ,' steps')
                 break
         end_time = time.time()
@@ -131,6 +131,7 @@ def MPC_collocation(degree, Q, R, function_type, x_init, x_desired, N, T, Tf, nl
 
         deviation.append(pose_deviation)
         total_deviation = np.linalg.norm(X_mpc[i+1,:] - x_ref)
+        print('Total deviation of current state vector from the desired state vector: ', total_deviation)
 
         # Implement stopping conditions
         if i >= N_sim-1:

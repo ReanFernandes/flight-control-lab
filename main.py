@@ -35,8 +35,8 @@ def main():
     R = np.diag([1, 1, 1, 1])* 0.6
 
     # define the starting point
-    x_init = np.array([0, 3, 0])
-    x_desired = np.array([1, 2, 9])
+    x_init = np.array([1, 3, 9])
+    x_desired = np.array([8, 5, 1])
 
     # Thrust controlled MPC 
     function_type = "force_control"
