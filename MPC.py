@@ -72,15 +72,17 @@ def MPC_multiple_shooting( Q, R, function_type, x_init, x_desired, N, T, Tf, nlp
 
         if total_deviation < 0.01:
             stable_state_counter += 1
-            if stable_state_counter == 10:
+            if stable_state_counter == 300:
                 print('MPC converged in ', i ,' steps')
                 break
         end_time = time.time()
         timer += end_time - start
+        print('Time taken for step ', i, ' is ', end_time - start, 's')
 
     # print the function type and time
     print('Function type: ', function_type)
     print('Time: ', timer, 's')
+    print('average time per step for multiple shooting: ', timer/N_sim, 's')
 
     return X_mpc, U_mpc, deviation, i
 
@@ -137,17 +139,20 @@ def MPC_collocation(degree, Q, R, function_type, x_init, x_desired, N, T, Tf, nl
 
         if total_deviation < 0.1:
             stable_state_counter += 1
-            if stable_state_counter == 10:
+            if stable_state_counter == 30:
                 print('MPC converged in ', i, ' steps')
                 break
 
         end_time = time.time()
         timer += end_time - start
+        print('Time taken for step ', i, ' is ', end_time - start, 's')
+
 
     # print method type, function type and time
     print('Method type: Direct Collocation')
     print('Function type: ', function_type)
     print('Time: ', timer, 's')
+    print('average time per step for collocation: ', timer/N_sim, 's')
     return X_mpc, U_mpc, deviation, i
 
 
