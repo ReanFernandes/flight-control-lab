@@ -6,15 +6,15 @@ from plot import *
 def main():
     # define the parameters 
     # Multiple Shooting
-    N_dms = 10
-    T_dms = 0.01
-    Tf_dms = 10
-    nlpopts_dms = {'ipopt': {'print_level': 0, 'max_iter':200}, 'print_time' : 0}
+    N_dms = 5
+    T_dms = 0.5
+    Tf_dms = 1000
+    nlpopts_dms = {'ipopt': {'print_level': 0, 'max_iter':100}, 'print_time' : 0}
 
     # Direct Collocation
     N_dc = 5
-    T_dc = 0.001
-    Tf_dc = 10
+    T_dc = 0.5
+    Tf_dc = 1000
     nlpopts_dc = {'ipopt': {'print_level': 0, 'max_iter':200}, 'print_time' : 0}
     degree = 2
 
