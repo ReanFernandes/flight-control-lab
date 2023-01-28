@@ -74,7 +74,7 @@ def NLP_direct_collocation(degree, Q, R, function_type, N, T, nlpopts = None):
     if function_type == "rpm_control":
         upper_control = [22, 22, 22, 22]
     elif function_type == "force_control":
-        upper_control = [10, 10, 10, 10]   
+        upper_control = [0.6292, 0.0102, 0.0102, 0.0076]   
 
     lower_control = [0, 0, 0, 0]
 
@@ -225,7 +225,7 @@ def NLP_multiple_shooting(Q, R, function_type, N, T, nlpopts):
     if function_type == "rpm_control":
         upper_control = [22000, 22000, 22000, 22000]
     elif function_type == "force_control":
-        upper_control = [10, 10, 10, 10]   
+        upper_control =[0.6292, 0.0102, 0.0102, 0.0076]     
 
     lower_control = [0, 0, 0, 0]
 

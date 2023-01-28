@@ -5,17 +5,32 @@ import matplotlib.pyplot as plt
 from plot import *
 def main():
     # define the parameters 
+    # Multiple Shooting Thrust control
+    N_dms_force = 15
+    T_dms_force = 0.01
+    Tf_dms_force = 1000
+    nlpopts_dms_force = {'ipopt': {'print_level': 0, 'max_iter':100}, 'print_time' : 0}
+
+    # Direct Collocation Thrust control
+    N_dc_force = 5
+    T_dc_force = 0.001
+    Tf_dc_force = 1000
+    nlpopts_dc_force = {'ipopt': {'print_level': 0, 'max_iter':200}, 'print_time' : 0}
+    degree = 2
+
+
+
     # Multiple Shooting
-    N_dms = 5
-    T_dms = 0.5
-    Tf_dms = 1000
-    nlpopts_dms = {'ipopt': {'print_level': 0, 'max_iter':100}, 'print_time' : 0}
+    N_dms_rpm = 15
+    T_dms_rpm = 0.25
+    Tf_dms_rpm = 1000
+    nlpopts_dms_rpm = {'ipopt': {'print_level': 0, 'max_iter':20}, 'print_time' : 0}
 
     # Direct Collocation
-    N_dc = 5
-    T_dc = 0.5
-    Tf_dc = 1000
-    nlpopts_dc = {'ipopt': {'print_level': 0, 'max_iter':200}, 'print_time' : 0}
+    N_dc_rpm = 5
+    T_dc_rpm = 0.5
+    Tf_dc_rpm = 1000
+    nlpopts_dc_rpm = {'ipopt': {'print_level': 0, 'max_iter':200}, 'print_time' : 0}
     degree = 2
 
 
@@ -35,34 +50,34 @@ def main():
     R = np.diag([1, 1, 1, 1])* 0.6
 
     # define the starting point
-    x_init = np.array([1, 3, 9])
-    x_desired = np.array([8, 5, 1])
+    x_init = np.array([5,5,5])
+    x_desired = np.array([3,3,3])
 
     # Thrust controlled MPC 
     function_type = "force_control"
 
     # Multiple Shooting
-    X_mpc_dms_force, U_mpc_dms_force, deviation, step = MPC_multiple_shooting(Q, R, function_type, x_init, x_desired, N_dms, T_dms, Tf_dms, nlpopts_dms)
+    X_mpc_dms_force, U_mpc_dms_force, deviation, step = MPC_multiple_shooting(Q, R, function_type, x_init, x_desired, N_dms_force, T_dms_force, Tf_dms_force, nlpopts_dms_force)
     plot_state_trajectory(X_mpc_dms_force, U_mpc_dms_force, deviation, step, function_type, 'DMS', x_init, x_desired)
     plot_drone_trajectory(X_mpc_dms_force, function_type, 'DMS', x_init, x_desired,step)
 
     # Direct Collocation
-    X_mpc_dc_force, U_mpc_dc_force, deviation, step = MPC_collocation(degree,Q, R, function_type, x_init, x_desired, N_dc, T_dc, Tf_dc, nlpopts_dc)
+    X_mpc_dc_force, U_mpc_dc_force, deviation, step = MPC_collocation(degree,Q, R, function_type, x_init, x_desired, N_dc_force, T_dc_force, Tf_dc_force, nlpopts_dc_force)
     plot_state_trajectory(X_mpc_dc_force, U_mpc_dc_force, deviation, step, function_type, 'DC', x_init, x_desired)
     plot_drone_trajectory(X_mpc_dc_force, function_type, 'DC', x_init, x_desired, step)
 
-    # # RPM controlled MPC
-    # function_type = "rpm_control"
+    # RPM controlled MPC
+    function_type = "rpm_control"
 
-    # # Multiple Shooting
-    # X_mpc_dms_rpm, U_mpc_dms_rpm, deviation, step = MPC_multiple_shooting(Q, R, function_type, x_init, x_desired, N_dms, T_dms, Tf_dms, nlpopts_dms)
-    # plot_state_trajectory(X_mpc_dms_rpm, U_mpc_dms_rpm, deviation, step, function_type, 'DMS', x_init, x_desired)
-    # plot_drone_trajectory(X_mpc_dms_rpm, function_type, 'DMS', x_init, x_desired)
+    # Multiple Shooting
+    X_mpc_dms_rpm, U_mpc_dms_rpm, deviation, step = MPC_multiple_shooting(Q, R, function_type, x_init, x_desired, N_dms_rpm, T_dms_rpm, Tf_dms_rpm, nlpopts_dms_rpm)
+    plot_state_trajectory(X_mpc_dms_rpm, U_mpc_dms_rpm, deviation, step, function_type, 'DMS', x_init, x_desired)
+    plot_drone_trajectory(X_mpc_dms_rpm, function_type, 'DMS', x_init, x_desired,step)
 
     # # Direct Collocation
-    # X_mpc_dc_rpm, U_mpc_dc_rpm, deviation, step = MPC_collocation(degree, Q, R, function_type, x_init, x_desired, N_dc, T_dc, Tf_dc, nlpopts_dc)
-    # plot_state_trajectory(X_mpc_dc_rpm, U_mpc_dc_rpm, deviation, step, function_type, 'DC', x_init, x_desired)
-    # plot_drone_trajectory(X_mpc_dc_rpm, function_type, 'DC', x_init, x_desired)
+    X_mpc_dc_rpm, U_mpc_dc_rpm, deviation, step = MPC_collocation(degree, Q, R, function_type, x_init, x_desired, N_dc_rpm, T_dc_rpm, Tf_dc_rpm, nlpopts_dc_rpm)
+    plot_state_trajectory(X_mpc_dc_rpm, U_mpc_dc_rpm, deviation, step, function_type, 'DC', x_init, x_desired)
+    plot_drone_trajectory(X_mpc_dc_rpm, function_type, 'DC', x_init, x_desired, step)
 
 
 

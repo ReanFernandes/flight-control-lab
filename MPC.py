@@ -2,10 +2,15 @@ from casadi import *
 import numpy as np
 from shooting_method import NLP_multiple_shooting, NLP_direct_collocation
 import time
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 
 nx = 12
 nu = 4
 def MPC_multiple_shooting( Q, R, function_type, x_init, x_desired, N, T, Tf, nlpopts = None):
+    # for plotting
+    N_sim = int(Tf/T/N)
+         
     # get the Solver
     
     solver, w0, lbw, ubw, lbg, ubg = NLP_multiple_shooting(Q, R, function_type, N, T, nlpopts)
@@ -13,7 +18,7 @@ def MPC_multiple_shooting( Q, R, function_type, x_init, x_desired, N, T, Tf, nlp
 
     
     # set the number of steps
-    N_sim = int(Tf/T/N)
+    
     print('N_sim for Multiple Shooting: ', N_sim)
     print('Length of w0: ', len(w0))
 
@@ -41,7 +46,7 @@ def MPC_multiple_shooting( Q, R, function_type, x_init, x_desired, N, T, Tf, nlp
         print('step: ', i)
         #shift initialisation
         w0 = [*w_opt[nx+nu:], *shift]
-        
+        # print('Before solving, X_mpc, ', X_mpc[i,:])
         # Solve the NLP
         sol = solver(x0=w0, lbx=lbw, ubx=ubw, lbg=lbg, ubg=ubg, p=vertcat(X_mpc[i,:], x_ref) )
         w_opt = sol['x'].full().flatten()
@@ -56,7 +61,8 @@ def MPC_multiple_shooting( Q, R, function_type, x_init, x_desired, N, T, Tf, nlp
         # Retrieve the solution
         X_mpc[i+1,:] = w_opt[nx+nu:nx+nu+nx]
         U_mpc[i,:] = w_opt[nx:nx+nu]
-      
+
+
         
         print('X_mpc: ', X_mpc[i+1,:])
         print('U_mpc: ', U_mpc[i,:])
@@ -82,7 +88,8 @@ def MPC_multiple_shooting( Q, R, function_type, x_init, x_desired, N, T, Tf, nlp
     # print the function type and time
     print('Function type: ', function_type)
     print('Time: ', timer, 's')
-    print('average time per step for multiple shooting: ', timer/N_sim, 's')
+    print('average time per step for multiple shooting: ', timer/i, 's')
+    print(max(U_mpc[:,0]))
 
     return X_mpc, U_mpc, deviation, i
 
@@ -108,17 +115,21 @@ def MPC_collocation(degree, Q, R, function_type, x_init, x_desired, N, T, Tf, nl
     # set the start state in X_mpc
     X_mpc[0,:] = x0
     timer = 0
-    shift = [*np.zeros(nx+ nu + nx*degree )]
+    shift = [*np.zeros((nx+ nu + nx*degree)*1)]
     deviation = []
     for i in range(N_sim):
         start = time.time()
         print('step: ', i)
         #shift initialisation
-        w0 = [*w_opt[nx+nu + nx *degree:], *shift]
+        w0 = [*w_opt[1*(nx+nu + nx *degree):], *shift]
+        # w0 = w_opt
+        # print('Before solving, X_mpc, ', X_mpc[i,:])
+
         # w0 = w_opt
         # Solve the NLP
         sol = solver(x0=w0, lbx=lbw, ubx=ubw, lbg=lbg, ubg=ubg, p=vertcat(X_mpc[i,:], x_ref) )
         w_opt = sol['x'].full().flatten()
+        # print(w_opt)
 
         # Retrieve the solution
         X_mpc[i+1,:] = w_opt[nx + nu +nx*degree :nx + nu +nx*degree  + nx]
@@ -150,10 +161,14 @@ def MPC_collocation(degree, Q, R, function_type, x_init, x_desired, N, T, Tf, nl
 
 
     # print method type, function type and time
+    
     print('Method type: Direct Collocation')
     print('Function type: ', function_type)
     print('Time: ', timer, 's')
-    print('average time per step for collocation: ', timer/N_sim, 's')
+    print('average time per step for collocation: ', timer/i, 's')
+
+    #print the highest value of 1st index of the control input
+    print(max(U_mpc[:,0]))
     return X_mpc, U_mpc, deviation, i
 
 
