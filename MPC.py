@@ -9,7 +9,7 @@ nx = 12
 nu = 4
 def MPC_multiple_shooting( Q, R, function_type, x_init, x_desired, N, T, Tf, nlpopts = None):
     # for plotting
-    N_sim = int(Tf/T/N)
+    N_sim = int(Tf * N / T)
          
     # get the Solver
     
@@ -98,7 +98,7 @@ def MPC_collocation(degree, Q, R, function_type, x_init, x_desired, N, T, Tf, nl
     solver, w0, lbw, ubw, lbg, ubg, x_plot, u_plot = NLP_direct_collocation(degree,Q, R, function_type, N, T, nlpopts)
 
     # set the number of steps
-    N_sim = int(Tf/T/N)
+    N_sim = int(Tf * N / T)
     print('N_sim: ', N_sim)
     print('Length of w0: ', len(w0))
 

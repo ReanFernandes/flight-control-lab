@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 # this class defines the Dynamics, cost, constraints and the NMPC solver
 
 class NMPC:
-    def __init__(self, Q, R, function_type, x_init, x_desired, N, T, Tf, nlpopts_dc = None, nlpopts_dms = None):
+    def __init__(self, Q, R, N, T, Tf, nlpopts_dc = None, nlpopts_dms = None):
         # define the variables for system dynamics
         self.nx = 12    
         self.nu = 4     
@@ -15,17 +15,16 @@ class NMPC:
         #assign ocp parameters
         self.Q = Q
         self.R = R
-        self.function_type = function_type
-        self.x_init = np.concatenate(x_init, np.zeros(self.nx - len(x_init)))
-        self.x_desired  = np.concatenate(x_desired, np.zeros(self.nx - len(x_desired)))
+        self.x_init = None
+        self.x_desired  = None
         self.N = N
         self.T = T
         self.Tf = Tf
-        self.N_sim = int(Tf/T/N)
+        self.N_sim = int(Tf * N / T)
         self.nlpopts_dc = nlpopts_dc
         self.nlpopts_dms = nlpopts_dms
         self.method = None
-
+        
         
         # define system constraints
         # set initial guess for state and control
@@ -93,6 +92,12 @@ class NMPC:
         self.pos_dev = []
         self.total_dev = []
     
+    def set_init_value(self,x_init):
+        self.x_init = np.concatenate(x_init, np.zeros(self.nx - len(x_init)))
+    
+    def set_desired_value(self,x_desired):
+        self.x_desired  = np.concatenate(x_desired, np.zeros(self.nx - len(x_desired)))
+
     def set_solver(self, method, degree = None):
             # set the solver method
             self.method = method
