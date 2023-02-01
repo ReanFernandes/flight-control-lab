@@ -172,7 +172,12 @@ def NLP_direct_collocation(degree, Q, R, function_type, N, T, nlpopts = None):
     g += [Xk - x_ref]
     lbg += [*equality_const]
     ubg += [*equality_const]
-
+    print ( "length of w0: ", len(w0))
+    print ( "length of lbw: ", len(lbw))
+    print ( "length of ubw: ", len(ubw))
+    print ( "length of lbg: ", len(lbg))
+    print ( "length of ubg: ", len(ubg))
+    print("length of g: ", len(g))
     # Create an NLP solver
     prob = {'f': J, 'x': vertcat(*w), 'g': vertcat(*g), 'p': vertcat(x0_hat, x_ref)}
     solver = nlpsol('solver', 'ipopt', prob, nlpopts)

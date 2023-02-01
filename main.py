@@ -13,10 +13,10 @@ def main():
 
     # Direct Collocation Thrust control
     N_dc_force = 5
-    T_dc_force = 0.001
+    T_dc_force = 0.1
     Tf_dc_force = 15
     nlpopts_dc_force = {'ipopt': {'print_level': 0, 'max_iter':50}, 'print_time' : 0}
-    degree = 4
+    degree = 3
 
 
 

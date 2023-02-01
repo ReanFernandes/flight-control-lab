@@ -39,7 +39,9 @@ class NMPC:
         self.lower_vel = [-10, -10, -10]
         self.upper_rate = [pi, pi, pi]
         self.lower_rate = [-pi, -pi, -pi]
-
+        self.upper_const = [self.upper_pose, self.upper_att, self.upper_vel, self.upper_rate]
+        self.lower_const = [self.lower_pose, self.lower_att, self.lower_vel, self.lower_rate]
+        self.equality_constraint = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         #control constraints
         self.upper_control = [0.6292, 0.0102, 0.0102, 0.0076]
         self.lower_control = [0, 0, 0, 0]
@@ -89,14 +91,15 @@ class NMPC:
         self.X_opt_full = None
         self.U_opt_full = None
 
-        self.pos_dev = []
+        self.pose_dev = []
         self.total_dev = []
     
     def set_init_value(self,x_init):
-        self.x_init = np.concatenate(x_init, np.zeros(self.nx - len(x_init)))
+        self.x_init = np.concatenate((x_init, np.zeros(self.nx - len(x_init))))
+        self.X_opt_current = self.x_init
     
     def set_desired_value(self,x_desired):
-        self.x_desired  = np.concatenate(x_desired, np.zeros(self.nx - len(x_desired)))
+        self.x_desired  = np.concatenate((x_desired, np.zeros(self.nx - len(x_desired))))
 
     def set_solver(self, method, degree = None):
             # set the solver method
@@ -146,7 +149,7 @@ class NMPC:
 
     def _cost(self):
         # define the cost function
-        cost = mtimes((self.x - self.x_setpoint).T, mtimes(self.Q, (self.x - self.x_setpoint))) + mtimes(self.u.T, mtimes(self.R, self.u))
+        cost = 0.5 * mtimes( mtimes( (self.x - self.x_setpoint).T, self.Q), (self.x - self.x_setpoint)) + 0.5 * mtimes( mtimes( self.u.T, self.R), self.u)
 
         return cost
 
@@ -161,8 +164,8 @@ class NMPC:
         h = self.T / self.N
         DT = h / self.M
         f = Function('f', [self.x, self.u], [xdot, self.L])
-        X0 = MX.sym('X0', self.nx)
-        U = MX.sym('U', self.nu)
+        X0 = SX.sym('X0', self.nx)
+        U = SX.sym('U', self.nu)
         X = X0
         Q = 0
         for j in range(self.M):
@@ -175,7 +178,7 @@ class NMPC:
         F = Function('F', [X0, U], [X, Q], ['x0','p'],['xf','qf'])
 
         # create the variable for the beginning of the state
-        X0 = MX.sym('X0', self.nx)
+        X0 = SX.sym('X0', self.nx)
         self.w += [X0]
         self.lbw += [*self.lower_pose, *self.lower_att, *self.lower_vel, *self.lower_rate]
         self.ubw += [*self.upper_pose, *self.upper_att, *self.upper_vel, *self.upper_rate]
@@ -230,8 +233,9 @@ class NMPC:
     def _build_dc_polynomials(self):
         # build interpolation polynomials for direct collocation
         #get the collocation points
-        tau_root = np.append(0, collocation_points(degree, 'legendre'))
         degree = self.degree
+        tau_root = np.append(0, collocation_points(degree, 'legendre'))
+        
         # coefficients of the collocation equation
         self.C = np.zeros((degree+1, degree+1))
 
@@ -262,104 +266,100 @@ class NMPC:
             self.B[j] = pint(1.0)
 
     def _DCsolver(self):
-        # create a solver instance for Direct Collocation
+        # get the model equations
         xdot = self._model()
-        # cost function
+
+        # set the cost function
         self.L = self._cost()
-        degree = self.degree
-        # set the collocation polynomials
+
+        # set the polynomial Coefficients
         self._build_dc_polynomials()
 
         # define the continuous time dynamics
-        f = Function('f', [self.x, self.u], [xdot, self.L], ['x', 'u'], ['xdot', 'L'])
+        f = Function('f', [self.x, self.u],[xdot, self.L], ['self.x', 'self.u'],['xdot', 'self.L'])
 
-        # define the time step for discrete time dynamics
+        # define the time step
         h = self.T / self.N
 
         # create variable for the beginning of the state
-        X0 = SX.sym('X0', self.nx, 1)
+        X0 = SX.sym('X0',self.nx,1)
         self.w += [X0]
-        self.lbw += [*self.lower_pose, *self.lower_att, *self.lower_vel, *self.lower_rate]
+        self.lbw += [*self.lower_pose, *self.lower_att, *self.lower_vel, *self.lower_rate ]
         self.ubw += [*self.upper_pose, *self.upper_att, *self.upper_vel, *self.upper_rate]
         self.w0 += [*self.initial_guess_state]
 
-        # add constraint to make the start state equal to the initial state
+        # add the equality constraint to make X0 equal to the starting state of the drone
         self.g += [X0 - self.x0_hat]
         self.lbg += [0] * self.nx
         self.ubg += [0] * self.nx
 
         Xk = self.x0_hat
-
-        # formulate the NLP
+        #formulate the nlp for the remaining states
         for k in range(self.N):
-            # new nlp variable for the control during the interval
+            # new NLP variable for the control input
             Uk = SX.sym('U_' + str(k), self.nu, 1)
             self.w += [Uk]
-            self.lbw += [*self.lower_control]   
+            self.lbw += [*self.lower_control]
             self.ubw += [*self.upper_control]
-            self.w0 += [*self.initial_guess_control]
+            self.w0 += [0] * self.nu
 
-            # state at the collocation points
+            # state variables at the collocation points
             Xc = []
-            for j in range(degree):
-                Xkj = SX.sym('X_' + str(k) + '_' + str(j), self.nx, 1)
+            for j in range(self.degree):
+                Xkj = SX.sym('X_' + str(k) + '_' +str(j), self.nx, 1)
                 Xc += [Xkj]
                 self.w += [Xkj]
-                self.lbw += [*self.lower_pose, *self.lower_att, *self.lower_vel, *self.lower_rate]
+                self.lbw +=  [*self.lower_pose, *self.lower_att, *self.lower_vel, *self.lower_rate ]
                 self.ubw += [*self.upper_pose, *self.upper_att, *self.upper_vel, *self.upper_rate]
                 self.w0 += [*self.initial_guess_state]
 
-            #loop over the collocation points
+            # make the end variable of the state as the evaluated polynomial at index 0
             Xk_end = self.D[0] * Xk
-            for j in range(1, degree+1):
-                # expression for the state derivative at the collocation point
-                xp = self.C[0, j] * Xk
-                for r in range(degree):
-                    xp = xp + self.C[r+1, j] * Xc[r]
-
+            for j in range(1, self.degree +1 ):
+                #state derivative at the collocation point
+                xp = self.C[0,j] * Xk
+                for r in range(self.degree):
+                    xp += self.C[r+1,j] * Xc[r]
+                
                 # append collocation equations
-                # f(Xk, Uk) is the state derivative at the collocation point
                 fj, qj = f(Xc[j-1], Uk)
                 self.g += [h * fj - xp]
                 self.lbg += [0] * self.nx
                 self.ubg += [0] * self.nx
-
-                # add contribution to the end state
-                # D[j] is the coefficient of the continuity equation
+                # Add contribution to the end state
                 Xk_end = Xk_end + self.D[j] * Xc[j-1]
 
-                # add contribution to quadrature function
-                # B[j] is the coefficient of the quadrature function
-                self.J += h * self.B[j] * qj    
+                # Add contribution to quadrature function
+                self.J = self.J + self.B[j] * qj * h
 
-            # new NLP variable for state at end of interval
+            # new NLP variable for the state at the end of the interval
             Xk = SX.sym('X_' + str(k+1), self.nx, 1)
             self.w += [Xk]
-            self.lbw += [*self.lower_pose, *self.lower_att, *self.upper_vel, *self.upper_rate]
+            self.lbw +=  [*self.lower_pose, *self.lower_att, *self.lower_vel, *self.lower_rate ]
             self.ubw += [*self.upper_pose, *self.upper_att, *self.upper_vel, *self.upper_rate]
-            self.w0 += [*self.initial_guess_state]
+            self.w0 += [*self.initial_guess_state]  
 
-            # add equality constraint
+            # add equality constraint to make this new state, which will be the starting point of the 
+            # next interval, be equal to the end state of the previous interval
             self.g += [Xk_end - Xk]
             self.lbg += [0] * self.nx
             self.ubg += [0] * self.nx
-        
-        # add the final state constraint
-        self.g += [Xk - self.x_setpoint]
+
+        # terminal equality constraint to make the end state of collocation be equal to the setpoint that we desire
+        self.g += [Xk - self.x_setpoint]    
         self.lbg += [0] * self.nx
         self.ubg += [0] * self.nx
 
-        #Initialise the optimal soln vector w_opt
+        # create optimsation variable 
         self.w_opt = np.zeros(len(self.w0))
+        #create the nlp solver
+        prob = {'f': self.J, 'x':vertcat(*self.w), 'g':vertcat(*self.g), 'p':vertcat(self.x0_hat, self.x_setpoint)}
+        self.solver = nlpsol('solver','ipopt', prob, self.nlpopts_dc)
 
-        # create an NLP solver
-        prob = {'f': self.J, 'x': vertcat(*self.w), 'g': vertcat(*self.g), 'p': vertcat(self.x0_hat, self.x_setpoint)}
-        self.solver = nlpsol('solver','ipopt',prob,self.nlpopts_dc)    
 
-   
     def solve_for_next_state(self):
         # solve the nlp for the current state and the setpoint
-        sol = self.solver(x0=self.w0, lbx=self.lbw, ubx=self.ubw, lbg=self.lbg, ubg=self.ubg, p=vertcat(self.X_opt_current, self.x_setpoint))
+        sol = self.solver(x0=self.w0, lbx=self.lbw, ubx=self.ubw, lbg=self.lbg, ubg=self.ubg, p=vertcat(self.X_opt_current, self.x_desired))
         self.w_opt = sol['x'].full().flatten()
         
     def extract_next_state(self, step, extract_preds=False):
@@ -395,10 +395,10 @@ class NMPC:
 
     def _deviation(self):
         # calculate the deviation between the current state and the setpoint
-        self.total_dev_current = np.linalg.norm(self.X_opt_current - self.x_setpoint)
+        self.total_dev_current = np.linalg.norm(self.X_opt_current - self.x_desired)
         self.total_dev.append(self.total_dev_current)
 
-        self.pose_dev_current = np.linalg.norm(self.X_opt_current[:3] - self.x_setpoint[:3])
+        self.pose_dev_current = np.linalg.norm(self.X_opt_current[:3] - self.x_desired[:3])
         self.pose_dev.append(self.pose_dev_current)
 
     def plot_drone_trajectory_end(self):
@@ -415,7 +415,69 @@ class NMPC:
         ax.legend()
         plt.show()
 
-   
+    def solve_open_loop_and_plot(self,x_init,x_desired):
+        self.set_init_value(x_init)
+        self.set_desired_value(x_desired)
+        self.set_solver(self.method, self.degree)
+        self.solve_for_next_state()
+        if self.method == "DMS":
+            x_open_loop = np.vstack([self.w_opt[(self.nx+self.nu)*(i): (self.nx+self.nu)*(i) + self.nx] for i in range(self.N)])
+            u_open_loop = np.vstack([self.w_opt[(self.nx+self.nu)*(i)+self.nx: (self.nx+self.nu)*(i)+self.nx + self.nu] for i in range(self.N)])
+        elif self.method == "DC":
+            x_open_loop = np.vstack([self.w_opt[(self.nx + self.nu + self.nx * self.degree)*i: (self.nx + self.nu + self.nx * self.degree)*i + self.nx] for i in range(self.N)])
+            u_open_loop = np.vstack([self.w_opt[((self.nx + self.nu + self.degree*self.nx)*(i-1)+self.nx): ((self.nx + self.nu + self.degree*self.nx)*(i-1)+self.nx) + self.nu ] for i in range(self.N)])
+
+        deviation = [np.linalg.norm(x_open_loop[i,:3] - self.x_desired[:,3]) for i in range(self.N)]
+
+        # plot the drone trajectory in one figure, and the state and control inputs in another figure
+        # figure 1: drone trajectory
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.plot(x_open_loop[:,0], x_open_loop[:,1], x_open_loop[:,2],'o', label='Drone trajectory')
+        ax.scatter(x_open_loop[0,0], x_open_loop[0,1], x_open_loop[0,2], color='r', label='Start')
+        ax.scatter(x_open_loop[-1,0], x_open_loop[-1,1], x_open_loop[-1,2], color='g', label='End')
+        ax.scatter(x_desired[0], x_desired[1], x_desired[2], color='k', label='Setpoint')
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.legend()
+        plt.show()
+        # figure 2: state and control inputs
+        fig, axs = plt.subplots(7, 1)
+        axs[0].plot(x_open_loop[:,0], label='x')
+        axs[0].plot(x_open_loop[:,1], label='y')
+        axs[0].plot(x_open_loop[:,2], label='z')
+        axs[0].set_ylabel('Position')
+        axs[0].legend()
+        axs[1].plot(x_open_loop[:,3], label='roll')
+        axs[1].plot(x_open_loop[:,4], label='pitch')
+        axs[1].plot(x_open_loop[:,5], label='yaw')
+        axs[1].set_ylabel('Attitude')
+        axs[1].legend()
+        axs[2].plot(x_open_loop[:,6], label='x_dot')
+        axs[2].plot(x_open_loop[:,7], label='y_dot')
+        axs[2].plot(x_open_loop[:,8], label='z_dot')
+        axs[2].set_ylabel('Velocity')
+        axs[2].legend()
+        axs[3].plot(x_open_loop[:,9], label='roll_dot')
+        axs[3].plot(x_open_loop[:,10], label='pitch_dot')
+        axs[3].plot(x_open_loop[:,11], label='yaw_dot')
+        axs[3].set_ylabel('Angular velocity')
+        axs[3].legend()
+        axs[4].plot(u_open_loop[:,0], label='thrust')
+        axs[4].set_ylabel('Thrust')
+        axs[4].legend()
+        axs[5].plot(u_open_loop[:,1], label='roll')
+        axs[5].plot(u_open_loop[:,2], label='pitch')
+        axs[5].plot(u_open_loop[:,3], label='yaw')
+        axs[5].set_ylabel('Control inputs')
+        axs[5].legend()
+        axs[6].plot(deviation, label='deviation')
+        axs[6].set_ylabel('Deviation')
+        axs[6].legend()
+        plt.show()
+
+
 
     def control_input_to_drone(self):
         # the control input to the drone, at the moment are the attitude setpoints [ roll, pitch, yawrate, thrust]
