@@ -16,7 +16,7 @@ def main():
     T_dc_force = 0.001
     Tf_dc_force = 15
     nlpopts_dc_force = {'ipopt': {'print_level': 0, 'max_iter':50}, 'print_time' : 0}
-    degree = 2
+    degree = 4
 
 
 

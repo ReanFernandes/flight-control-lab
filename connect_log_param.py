@@ -18,7 +18,7 @@ DEFAULT_HEIGHT = 0.5
 BOX_LIMIT = 0.5
 
 def simple_log(scf, logconf):
-    with SyncLogger(scf, lg_stab) as logger:
+    with SyncLogger(scf, logconf) as logger:
 
         for log_entry in logger:
 
@@ -80,13 +80,13 @@ def simple_connect():
 if __name__ == '__main__':
     # initialise low level drivers
     cflib.crtp.init_drivers()
-    lg_kalman = LogConfig(name='kalman', period_in_ms=50)
-    lg_kalman.add_variable('kalman.stateX', 'float') # x position in global frame
-    lg_kalman.add_variable('kalman.stateY', 'float') # y position in global frame
-    lg_kalman.add_variable('kalman.stateZ', 'float') # z position in global frame
-    lg_kalman.add_variable('kalman.statePX', 'float') # x velocity in body frame
-    lg_kalman.add_variable('kalman.statePY', 'float') # y velocity in body frame
-    lg_kalman.add_variable('kalman.statePZ', 'float') # z velocity in body frame
+    lg_kalman = LogConfig(name='stateEstimate', period_in_ms=50)
+    lg_kalman.add_variable('stateEstimate.x', 'float') # x position in global frame
+    lg_kalman.add_variable('stateEstimate.y', 'float') # y position in global frame
+    lg_kalman.add_variable('stateEstimate.z', 'float') # z position in global frame
+    lg_kalman.add_variable('stateEstimate.vx', 'float') # x velocity in body frame
+    lg_kalman.add_variable('stateEstimate.vy', 'float') # y velocity in body frame
+    lg_kalman.add_variable('stateEstimate.vz', 'float') # z velocity in body frame
     lg_stab = LogConfig(name='Stabilizer', period_in_ms=50)
     lg_stab.add_variable('stabilizer.roll', 'float') # roll angle in body frame
     lg_stab.add_variable('stabilizer.pitch', 'float') # pitch angle in body frame
@@ -97,7 +97,10 @@ if __name__ == '__main__':
     lg_gyro.add_variable('gyro.y', 'float') # pitch rate in body frame
     lg_gyro.add_variable('gyro.z', 'float') # yaw rate in body frame
 
-    # create parameters for NMPC object
+    # create parameters for NMPC object   # lg_stab = LogConfig(name='Stabilizer', period_in_ms=50)
+    # lg_stab.add_variable('stabilizer.roll', 'float') # roll angle in body frame
+    # lg_stab.add_variable('stabilizer.pitch', 'float') # pitch angle in body frame
+    # lg_stab.add_variable('stabilizer.yaw', 'float') # yaw angle in body frame
     #
     
     Q = np.diag([120,   #x
@@ -125,7 +128,8 @@ if __name__ == '__main__':
     nmpc = NMPC(Q, R, N, T, Tf, nlpopts_dc, nlp_opts_dms)
     
     # Define solution method and create solver
-    method = "DC" ;  degree = 2 ;
+    method = "DC"  
+    degree = 2 
     # method = "DMS"
     nmpc.set_solver(method, degree)
 
