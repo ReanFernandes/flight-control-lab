@@ -427,7 +427,7 @@ class NMPC:
             x_open_loop = np.vstack([self.w_opt[(self.nx + self.nu + self.nx * self.degree)*i: (self.nx + self.nu + self.nx * self.degree)*i + self.nx] for i in range(self.N)])
             u_open_loop = np.vstack([self.w_opt[((self.nx + self.nu + self.degree*self.nx)*(i-1)+self.nx): ((self.nx + self.nu + self.degree*self.nx)*(i-1)+self.nx) + self.nu ] for i in range(self.N)])
 
-        deviation = [np.linalg.norm(x_open_loop[i,:3] - self.x_desired[:,3]) for i in range(self.N)]
+        deviation = [np.linalg.norm(x_open_loop[i,:3] - self.x_desired[:3]) for i in range(self.N)]
 
         # plot the drone trajectory in one figure, and the state and control inputs in another figure
         # figure 1: drone trajectory
