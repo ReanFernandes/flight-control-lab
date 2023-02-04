@@ -8,14 +8,24 @@ from cflib.utils import uri_helper
 from cflib.crazyflie.log import LogConfig
 from cflib.crazyflie.syncLogger import SyncLogger
 from class_NMPC import NMPC
-from cflib.positioning.motion_commander import MotionCommander
+
 import argparse
+import math
 
 uri = uri_helper.uri_from_env(default='radio://0/80/2M/E7E7E7E7E7')
 logging.basicConfig(level=logging.ERROR)
 
 DEFAULT_HEIGHT = 0.5
 BOX_LIMIT = 0.5
+#extract the roll,pitch,yawrate and thrust from control_input.txt
+# this file has been pregenerated to run the mpc solution obtained offline
+def extract_control_input():
+    control_input = np.loadtxt('control_input.txt')
+    control_input = control_input.reshape(125,4)
+    control_input[:,3] = control_input[:,3].astype(int)
+    return control_input.tolist()
+
+sequence = extract_control_input()
 
 def simple_log(scf, logconf):
     with SyncLogger(scf, logconf) as logger:
@@ -77,6 +87,30 @@ def simple_connect():
     time.sleep(10)
     print("Disconnecting")
 
+def land_safely(cf):
+    print("landing")
+    scf.cf.commander.send_setpoint(0, 0, 0, 0)
+    time.sleep(5)
+    print("done landing")
+    scf.cf.commander.send_stop_setpoint()
+    time.sleep(0.1)
+
+def fly_drone(cf,position):
+    scf.cf.commander.send_setpoint(0, 0, 0, 0)
+    time.sleep(0.1)
+    scf.cf.commander.send_hover_setpoint(0.05, 0.05, 0, 0.5)
+    time.sleep(3)
+    print("done moving to setpoint")
+    i = 0
+    while i<100:
+        scf.cf.commander.send_setpoint(0, 0, 0, 32000)
+        time.sleep(0.1)
+        i+= 1
+    print("ran setpoint")
+    # for i in range(0,125):
+    #     scf.cf.commander.send_setpoint(sequence[i][0], sequence[i][1], sequence[i][2], int(sequence[i][3]))
+    #     time.sleep(0.5)
+
 if __name__ == '__main__':
     # initialise low level drivers
     cflib.crtp.init_drivers()
@@ -103,38 +137,39 @@ if __name__ == '__main__':
     # lg_stab.add_variable('stabilizer.yaw', 'float') # yaw angle in body frame
     #
     
-    Q = np.diag([120,   #x
-                120,    #y
-                120,    #z
-                1e-2,   #phi
-                1e-2,   #theta
-                1e-2,   #psi
-                7e-1,   #vx
-                1,      #vy
-                4,      #vz
-                1e-5,   #phi_dot
-                1e-5,   #theta_dot
-                10])   #psi_dot
+    # Q = np.diag([120,   #x
+    #             120,    #y
+    #             120,    #z
+    #             1e-2,   #phi
+    #             1e-2,   #theta
+    #             1e-2,   #psi
+    #             7e-1,   #vx
+    #             1,      #vy
+    #             4,      #vz
+    #             1e-5,   #phi_dot
+    #             1e-5,   #theta_dot
+    #             10])   #psi_dot
 
-    R = np.diag([1, 1, 1, 1])* 0.6
-    N = 10
-    T = 0.01
-    Tf = 0.1
+    # R = np.diag([1, 1, 1, 1])* 0.6
+    # N = 10
+    # T = 0.01
+    # Tf = 0.1
 
-    nlpopts_dc = {'ipopt': {'print_level': 0, 'max_iter':200}, 'print_time' : 0}
-    nlp_opts_dms = {'ipopt': {'print_level': 0, 'max_iter':100}, 'print_time' : 0}
+    # nlpopts_dc = {'ipopt': {'print_level': 0, 'max_iter':200}, 'print_time' : 0}
+    # nlp_opts_dms = {'ipopt': {'print_level': 0, 'max_iter':100}, 'print_time' : 0}
 
-    # create NMPC object
-    nmpc = NMPC(Q, R, N, T, Tf, nlpopts_dc, nlp_opts_dms)
+    # # create NMPC object
+    # nmpc = NMPC(Q, R, N, T, Tf, nlpopts_dc, nlp_opts_dms)
     
-    # Define solution method and create solver
-    method = "DC"  
-    degree = 2 
-    # method = "DMS"
-    nmpc.set_solver(method, degree)
-
+    # # Define solution method and create solver
+    # method = "DC"  
+    # degree = 2 
+    # # method = "DMS"
+    # nmpc.set_solver(method, degree)
+    position = [0,0,0.5]
     with SyncCrazyflie(uri, cf=Crazyflie(rw_cache='./cache')) as scf:
 
         # simple_connect()
-        simple_log(scf, [lg_kalman, lg_stab, lg_gyro])
+        fly_drone(scf, position)
+        land_safely(scf)
 

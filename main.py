@@ -27,7 +27,7 @@ def main():
     nlpopts_dms_rpm = {'ipopt': {'print_level': 0, 'max_iter':20}, 'print_time' : 0}
 
     # Direct Collocation
-    N_dc_rpm = 10
+    N_dc_rpm = 5
     T_dc_rpm = 0.5
     Tf_dc_rpm = 1000
     nlpopts_dc_rpm = {'ipopt': {'print_level': 0, 'max_iter':200}, 'print_time' : 0}
@@ -50,7 +50,7 @@ def main():
     R = np.diag([1, 1, 1, 1])* 0.06
 
     # define the starting point
-    x_init = np.array([3,0,1])
+    x_init = np.array([0,0,1])
     x_desired = np.array([1,1,7])
 
     # Thrust controlled MPC 
@@ -61,10 +61,10 @@ def main():
     # plot_state_trajectory(X_mpc_dms_force, U_mpc_dms_force, deviation, step, function_type, 'DMS', x_init, x_desired)
     # plot_drone_trajectory(X_mpc_dms_force, function_type, 'DMS', x_init, x_desired,step)
 
-    # Direct Collocation
-    X_mpc_dc_force, U_mpc_dc_force, deviation, step = MPC_collocation(degree,Q, R, function_type, x_init, x_desired, N_dc_force, T_dc_force, Tf_dc_force, nlpopts_dc_force)
-    plot_state_trajectory(X_mpc_dc_force, U_mpc_dc_force, deviation, step, function_type, 'DC', x_init, x_desired)
-    plot_drone_trajectory(X_mpc_dc_force, function_type, 'DC', x_init, x_desired, step)
+    # # Direct Collocation
+    # X_mpc_dc_force, U_mpc_dc_force, deviation, step = MPC_collocation(degree,Q, R, function_type, x_init, x_desired, N_dc_force, T_dc_force, Tf_dc_force, nlpopts_dc_force)
+    # plot_state_trajectory(X_mpc_dc_force, U_mpc_dc_force, deviation, step, function_type, 'DC', x_init, x_desired)
+    # plot_drone_trajectory(X_mpc_dc_force, function_type, 'DC', x_init, x_desired, step)
 
     # RPM controlled MPC
     function_type = "rpm_control"
@@ -74,10 +74,10 @@ def main():
     # plot_state_trajectory(X_mpc_dms_rpm, U_mpc_dms_rpm, deviation, step, function_type, 'DMS', x_init, x_desired)
     # plot_drone_trajectory(X_mpc_dms_rpm, function_type, 'DMS', x_init, x_desired,step)
 
-    # # # Direct Collocation
-    # X_mpc_dc_rpm, U_mpc_dc_rpm, deviation, step = MPC_collocation(degree, Q, R, function_type, x_init, x_desired, N_dc_rpm, T_dc_rpm, Tf_dc_rpm, nlpopts_dc_rpm)
-    # plot_state_trajectory(X_mpc_dc_rpm, U_mpc_dc_rpm, deviation, step, function_type, 'DC', x_init, x_desired)
-    # plot_drone_trajectory(X_mpc_dc_rpm, function_type, 'DC', x_init, x_desired, step)
+    # # Direct Collocation
+    X_mpc_dc_rpm, U_mpc_dc_rpm, deviation, step = MPC_collocation(degree, Q, R, function_type, x_init, x_desired, N_dc_rpm, T_dc_rpm, Tf_dc_rpm, nlpopts_dc_rpm)
+    plot_state_trajectory(X_mpc_dc_rpm, U_mpc_dc_rpm, deviation, step, function_type, 'DC', x_init, x_desired)
+    plot_drone_trajectory(X_mpc_dc_rpm, function_type, 'DC', x_init, x_desired, step)
 
 
 

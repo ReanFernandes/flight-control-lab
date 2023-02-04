@@ -24,11 +24,11 @@ class NMPC:
         self.nlpopts_dc = nlpopts_dc
         self.nlpopts_dms = nlpopts_dms
         self.method = None
-        
+        self.hover = 0.3234 # the minimum thrust required for the drone to hover where it is
         
         # define system constraints
         # set initial guess for state and control
-        self.initial_guess_control = [0] * self.nu
+        self.initial_guess_control = [0.3234, 0, 0, 0]
         self.initial_guess_state = [0] * self.nx
         #state constraints
         self.upper_pose = [10, 10, 10]
@@ -44,7 +44,7 @@ class NMPC:
         self.equality_constraint = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         #control constraints
         self.upper_control = [0.6292, 0.0102, 0.0102, 0.0076]
-        self.lower_control = [0, 0, 0, 0]
+        self.lower_control = [0, -0.0102, -0.0102, -0.0076]
 
         # define the variables to be used in cost function
         self.x_setpoint = SX.sym('x_setpoint', self.nx, 1) # setpoint for state variable
@@ -94,12 +94,12 @@ class NMPC:
         self.pose_dev = []
         self.total_dev = []
     
-    def set_init_value(self,x_init):
+    def set_values(self,x_init, x_desired):
         self.x_init = np.concatenate((x_init, np.zeros(self.nx - len(x_init))))
         self.X_opt_current = self.x_init
-    
-    def set_desired_value(self,x_desired):
         self.x_desired  = np.concatenate((x_desired, np.zeros(self.nx - len(x_desired))))
+        
+        
 
     def set_solver(self, method, degree = None):
             # set the solver method
@@ -116,14 +116,13 @@ class NMPC:
                 
     def _model(self):
         # define the system dynamics
-        params = {  'm' : 0.0027,   # mass of quadcopter
+        params = {  'm' : 40e-3,   # mass of quadcopter
             'l' : 30e-3,    # dist bw com and motor
-            'k_f' : 4.86e-4, #thrust coeff
+            'k_f' : 3.25e-4, #thrust coeff
             'k_m' : 1.5e-7,  #moment coeff
             'I' : np.diag([16.5717e-5, 16.6556e-5, 29.2616e-5]), # Inertia matrix
-            'g' : 9.81 } # gravity
+            'g' : 9.8066 } # gravity
         
-         
 
         # define state equations Pose, attitude, velocity, angular velocity
 
@@ -416,8 +415,7 @@ class NMPC:
         plt.show()
 
     def solve_open_loop_and_plot(self,x_init,x_desired):
-        self.set_init_value(x_init)
-        self.set_desired_value(x_desired)
+        self.set_values(x_init, x_desired)
         self.set_solver(self.method, self.degree)
         self.solve_for_next_state()
         if self.method == "DMS":
@@ -426,7 +424,7 @@ class NMPC:
         elif self.method == "DC":
             x_open_loop = np.vstack([self.w_opt[(self.nx + self.nu + self.nx * self.degree)*i: (self.nx + self.nu + self.nx * self.degree)*i + self.nx] for i in range(self.N)])
             u_open_loop = np.vstack([self.w_opt[((self.nx + self.nu + self.degree*self.nx)*(i-1)+self.nx): ((self.nx + self.nu + self.degree*self.nx)*(i-1)+self.nx) + self.nu ] for i in range(self.N)])
-
+        self.U_mpc = u_open_loop
         deviation = [np.linalg.norm(x_open_loop[i,:3] - self.x_desired[:3]) for i in range(self.N)]
 
         # plot the drone trajectory in one figure, and the state and control inputs in another figure
