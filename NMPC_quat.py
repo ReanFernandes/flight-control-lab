@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 # this class implements the quadrotor dynamics using quaternions and solve the NMPC problem
 class NMPC_quat:
-    def __init__(self, Q, R, N, T, Tf, method, degree = None, nlpopts_dc = None, nlpopts_dms = None):
+    def __init__(self, Q, R, N, T, Tf, method, degree = None, store_prediction = False, nlpopts_dc ={}, nlpopts_dms = {}):
         # define the casadi variables for the system dynamics
         self.nx = 13
         self.nu = 4
@@ -61,23 +61,24 @@ class NMPC_quat:
         self.N_sim = int(Tf * N/T)
         self.nlpopts_dc = nlpopts_dc
         self.nlpopts_dms = nlpopts_dms
-        
+        self.control_list = []
 
         # define the system constraints
         self.u_max = 22 # max rotor speed [krpm]
-        self.initial_guess_control = [ self.u_max, self.u_max, self.u_max, self.u_max]
+        # self.initial_guess_control = [ self.u_max, self.u_max, self.u_max, self.u_max]
         # self.initial_guess_control = [ 0, 0, 0, 0]
+        self.initial_guess_control = [ self.hover_speed, self.hover_speed, self.hover_speed, self.hover_speed]
         self.initial_guess_state = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
         # state and control bounds
         self.lower_pose = [-1, -1, 0]
         self.upper_pose = [2, 2, 2]
-        self.lower_quat = [-1, -1, -1, -1]
+        self.lower_quat = [0, -1, -1, -1]
         self.upper_quat = [1, 1, 1, 1]
         self.lower_vel = [-1, -1, -1]
         self.upper_vel = [1, 1, 1]
-        self.upper_rate = [1, 1, 1]
-        self.lower_rate = [-1, -1, -1]
+        self.upper_rate = [10, 10, 10]
+        self.lower_rate = [-10, -10, -10]
         self.lower_bound_state = [ *self.lower_pose, *self.lower_quat, *self.lower_vel, *self.lower_rate]
         self.upper_bound_state = [ *self.upper_pose, *self.upper_quat, *self.upper_vel, *self.upper_rate]
         # control bounds
@@ -89,13 +90,14 @@ class NMPC_quat:
         self.x0_hat = SX.sym('x0_hat', self.nx, 1)
         self.u_prev = SX.sym('u_prev', self.nu, 1)
         self.L = None # cost function
-
+        self.M = None # Terminal state cost
         # Solver related stuff
         self.method = method
 
         # DMS parameters 
-        self.M = 2 # number of ERK4 stages
+        self.M = 4 # number of ERK4 stages
         self.integrator = None
+        self.terminal_integrator = None
         # DC parameters 
         self.degree = degree
         self.C = None
@@ -128,7 +130,7 @@ class NMPC_quat:
         self.U_opt_current = None
         self.X_pred_current = None
         self.U_pred_current = None
-        self.pose_dev_current = None
+        self.deviation_from_reference = None
         self.total_dev_current = None
 
         # define the deviation and logging variables to save to text file
@@ -139,7 +141,7 @@ class NMPC_quat:
         self.total_dev = []
 
         # store prediction flag
-        self.store_prediction = False
+        self.store_prediction = store_prediction
 
         # list for storing converted phi, theta, psi
         self.phi = None
@@ -165,15 +167,18 @@ class NMPC_quat:
         #set the solver based on the method
         if self.method == "DMS":
             self._rk4()
+            self._terminal_integrator()
             self._dms_solver()
         elif self.method == "DC":
             self._build_dc_polynomial()
             self.f = Function('f', [self.x, self.u],[self.xdot, self.L], ['self.x', 'self.u'],['xdot', 'self.L'])
+            self.m = Function('m', [self.x, self.u],[self.xdot], ['self.x', 'self.u'],['xdot'])
             self._dc_solver()
 
     def set_values(self, x_init, x_des):
-        self.x_init = np.concatenate((x_init, 1 , np.zeros(9)))
-        self.x_des = np.concatenate((x_des, 1 , np.zeros(9)))
+        self.x_init = np.concatenate((x_init, np.array([1]) , np.zeros(9)))
+        self.x_des = np.concatenate((x_des, np.array([1]) , np.zeros(9)))
+        self.initial_guess_state = [self.x_init[i] for i in range(self.nx)]
         self.X_opt_current = self.x_init
         if x_init[2] < 0.1:
             self.U_opt_current = np.array([self.u_max, self.u_max, self.u_max, self.u_max]) # drone near ground, give max thrust
@@ -198,8 +203,10 @@ class NMPC_quat:
         self.xdot = vertcat(dxq, dyq, dzq, dq1, dq2, dq3, dq4, dvbx, dvby, dvbz, dwx, dwy, dwz)
 
     def _cost(self):
-        self.L = mtimes(mtimes((self.x - self.x_ref).T, self.Q), (self.x - self.x_ref)) + mtimes(mtimes((self.u - self.u_prev).T, self.R), (self.u - self.u_prev))
-
+        # self.L = mtimes(mtimes((self.x - self.x_ref).T, self.Q), (self.x - self.x_ref)) + mtimes(mtimes((self.u - self.u_prev).T, self.R), (self.u - self.u_prev))
+        # self.L = mtimes(mtimes((self.x[:3] - self.x_ref[:3]).T, self.Q), (self.x[:3] - self.x_ref[:3])) + mtimes(mtimes((self.u ).T, self.R), (self.u ))
+        self.L = mtimes(mtimes((self.x - self.x_ref).T, self.Q), (self.x - self.x_ref)) + mtimes(mtimes((self.u - self.u_prev).T, self.R), (self.u - self.u_prev)) 
+        self.Mayer = 50 * mtimes(mtimes((self.x - self.x_ref).T, self.Q), (self.x - self.x_ref))
     def _rk4(self):
         
         DT = self.h / self.M
@@ -216,10 +223,23 @@ class NMPC_quat:
             X=X+DT/6*(k1 +2*k2 +2*k3 +k4)
             Q = Q + DT/6*(k1_q + 2*k2_q + 2*k3_q + k4_q)
         self.integrator = Function('F', [X0, U], [X, Q], ['x0','p'],['xf','qf'])
-    
+    def _terminal_integrator(self):
+        DT = self.h / self.M
+        f = Function('f', [self.x], [ self.Mayer])
+        X0 = SX.sym('X0', self.nx, 1)
+        X = X0
+        Q = 0
+        for j in range(self.M):
+            k1_q = f(X)
+            k2_q = f(X + DT/2 * k1_q)
+            k3_q = f(X + DT/2 * k2_q)
+            k4_q = f(X + DT * k3_q)
+            X=X+DT/6*(k1_q +2*k2_q +2*k3_q +k4_q)
+            Q = Q + DT/6*(k1_q + 2*k2_q + 2*k3_q + k4_q)
+        self.terminal_integrator = Function('F', [X0], [Q], ['x0'],['qf'])
     def _dms_solver(self):
 
-        # create the state variables for the beginning of the state
+        # create the state variable for the beginning of the state
         X0 = SX.sym('X0', self.nx, 1)
         self.w += [X0]
         self.w0 += [*self.initial_guess_state]
@@ -244,9 +264,9 @@ class NMPC_quat:
             self.ubw += [*self.upper_bound_control]
 
             # Integrate using Runge-Kutta 4 integrator
-            Fk, Qk = self.integrator(x0=Xk, p=Uk)
-            Xk_end = Fk     # the end state of this interval
-            self.J += Qk   # the cost of this interval, added to the total cost
+            Fk = self.integrator(x0=Xk, p=Uk)
+            Xk_end = Fk['xf']     # the end state of this interval
+            self.J += Fk['qf']   # the cost of this interval, added to the total cost
 
             # New NLP variable for state at end of interval
             Xk = SX.sym('X_' + str(k+1), self.nx, 1)
@@ -264,11 +284,19 @@ class NMPC_quat:
         self.g += [Xk - self.x_ref]
         self.lbg += [0]*self.nx
         self.ubg += [0]*self.nx
+
+        # add end cost
+        Fk = self.terminal_integrator(x0=Xk)
+        self.J += Fk['qf']
+
+
+
         
         self.w_opt = np.zeros(len(self.w0))
 
         # Create an NLP solver
         prob = {'f': self.J, 'x': vertcat(*self.w), 'g': vertcat(*self.g), 'p': vertcat(self.x0_hat, self.u_prev, self.x_ref)}
+        # prob = {'f': self.J, 'x': vertcat(*self.w), 'g': vertcat(*self.g), 'p': vertcat(self.x0_hat,  self.x_ref)}
         self.solver = nlpsol('solver', 'ipopt', prob, self.nlp_opts_dms)
 
     def _build_dc_polynomial(self):
@@ -299,7 +327,7 @@ class NMPC_quat:
             pder = np.polyder(p)
             for r in range(degree+1):
                 self.C[j, r] = pder(tau_root[r])
-
+    
             # evaluate the integral of the polynomial to get the coefficients of the quadrature function
             pint = np.polyint(p)
             self.B[j] = pint(1.0)
@@ -383,12 +411,16 @@ class NMPC_quat:
 
     def solve_for_next_state(self):
         # solve the nlp 
+        # print("current control: ", self.U_opt_current)
         sol = self.solver(x0=self.w0, lbx=self.lbw, ubx=self.ubw, lbg=self.lbg, ubg=self.ubg, p=vertcat(self.X_opt_current, self.U_opt_current, self.x_des))
+        # sol = self.solver(x0=self.w0, lbx=self.lbw, ubx=self.ubw, lbg=self.lbg, ubg=self.ubg, p=vertcat(self.X_opt_current, self.x_des))
         self.w_opt = sol['x'].full().flatten()
 
     def solve_open_loop(self):
             # solve the nlp 
-            sol = self.solver(x0=self.w0, lbx=self.lbw, ubx=self.ubw, lbg=self.lbg, ubg=self.ubg, p=vertcat(self.X_opt_current, self.U_opt_current ,self.x_des))
+            # sol = self.solver(x0=self.w0, lbx=self.lbw, ubx=self.ubw, lbg=self.lbg, ubg=self.ubg, p=vertcat(self.X_opt_current, self.U_opt_current ,self.x_des))
+            sol = self.solver(x0=self.w0, lbx=self.lbw, ubx=self.ubw, lbg=self.lbg, ubg=self.ubg, p=vertcat(self.X_opt_current ,self.x_des))
+
             self.w_opt = sol['x'].full().flatten()
             if self.method == "DMS":
                 x_open_loop = np.vstack([self.w_opt[(self.nx+self.nu)*(i): (self.nx+self.nu)*(i) + self.nx] for i in range(self.N)])
@@ -398,6 +430,12 @@ class NMPC_quat:
                 u_open_loop = np.vstack([self.w_opt[((self.nx + self.nu + self.degree*self.nx)*(i-1)+self.nx): ((self.nx + self.nu + self.degree*self.nx)*(i-1)+self.nx) + self.nu ] for i in range(self.N)])
             self.X_mpc = x_open_loop
             self.U_mpc = u_open_loop
+            # extract the state and control from x_mpc and U_mpc using for loop
+            for i in range(self.N):
+                self.X_opt_current = self.X_mpc[i, :]
+                self.U_opt_current = self.U_mpc[i, :]
+                self._quaternion_to_euler()
+                self.control_to_drone()
 
     def extract_next_state(self, step, extract_predicted_state=False):
         # extract the optimal state from the solution
@@ -411,6 +449,11 @@ class NMPC_quat:
         if extract_predicted_state:
             self._extract_prediction(step)
         
+        if self.store_prediction:
+            self._quaternion_to_euler()
+            self.control_to_drone()
+        self._deviation_from_reference()
+    
         self.X_mpc[step,:] = self.X_opt_current
         self.U_mpc[step,:] = self.U_opt_current
     
@@ -445,17 +488,17 @@ class NMPC_quat:
         self.psi = psi
 
         if self.store_prediction:
-            self.phi_list.append(phi)
-            self.theta_list.append(theta)
-            self.psi_list.append(psi)
+            self.phi_list.append(self._rad2deg(phi))
+            self.theta_list.append(self._rad2deg(theta))
+            self.psi_list.append(self._rad2deg(psi))
 
     def _rpm_to_thrust(self):
-        thrust = 1.0942e-07 * self.U_opt_current**2 - 2.1059e-04 * self.U_opt_current + 1.5417e-01
+        thrust = 1.0942e-07 * (self.U_opt_current*1000)**2 - 2.1059e-04 * self.U_opt_current*1000 + 1.5417e-01
         return thrust
     
     def _total_thrust(self):
         thrust = self._rpm_to_thrust()
-        total_thrust = np.sum(thrust)
+        total_thrust = np.sum(thrust)/4
 
         self.thrust = (total_thrust / self.max_thrust) * 50000 +10001 #convert the thurst to an integer value between 10001 and 60000
         if self.store_prediction:
@@ -470,10 +513,11 @@ class NMPC_quat:
         pitch = 1.0 * self._rad2deg(self.theta)
         roll = -1.0 * self._rad2deg(self.phi)
         yaw_rate = self._rad2deg(self.X_opt_current[10])
-
+        self.control_list.append([roll, pitch, yaw_rate, self.thrust])
         return [roll, pitch, yaw_rate, self.thrust]
 
-            
+    def _deviation_from_reference(self):
+        self.deviation_from_reference = np.linalg.norm(self.X_opt_current[:3] - self.x_des[:3])
 
 
    
