@@ -1,5 +1,7 @@
 from casadi import *
 import numpy as np
+import matplotlib.pyplot as plt
+import time
 
 ######################################################
 #system model
@@ -7,7 +9,7 @@ class dynamics:
     def __init__(self):
         # define drone parameters
         self.g0  = 9.8066     # [m.s^2] accerelation of gravity
-        self.mq  = 40e-3      # [kg] total mass (with one marker)
+        self.mq  = 30e-3      # [kg] total mass (with one marker)
         self.Ixx = 1.395e-5   # [kg.m^2] Inertia moment around x-axis
         self.Iyy = 1.395e-5   # [kg.m^2] Inertia moment around y-axis
         self.Izz = 2.173e-5   # [kg.m^2] Inertia moment around z-axis
@@ -17,7 +19,7 @@ class dynamics:
         self.l   = self.dq/2       # [m] distance between motors' center and the axis of rotation
         # self.hover_speed = np.sqrt(self.mq * self.g0 / (4 * self.Ct)) # [krpm] hover speed
         self.hover_speed = 18.1795 # [krpm] hover speed
-        self.max_speed = 23 # [krpm] max speed
+        self.max_speed = 22 # [krpm] max speed
         # define state variables
     #    define the casadi variables for the system dynamics
         self.nx = 13
@@ -120,7 +122,7 @@ class cost():
 # solver
 
 class solver():
-    def __init__(self,  timing, solver_bounds, nlp_opts, Q, R, cost_type ="slack", simulation_type= "Open_loop") -> None:
+    def __init__(self,  timing, solver_bounds, nlp_opts, Q, R, cost_type ="slack", simulation_type= "Open_loop", use_shift = False) -> None:
         self.cost = cost(Q, R)
         self.simulation_type = simulation_type
         # model variables generated from the cost function ( no need to call model class again)
@@ -137,6 +139,8 @@ class solver():
 
         self.cost_type = cost_type
         self.max_speed = self.cost.max_speed
+        self.max_thrust = self.max_thrust = 1.0942e-07 * (self.max_speed*1000)**2 - 2.1059e-04 * (self.max_speed*1000) + 1.5417e-01 # in grams
+        self.max_trust_int_val = 0
         self.hover_speed = self.cost.hover_speed
         if cost_type == "slack":
             self.cost.use_slack()
@@ -147,11 +151,13 @@ class solver():
         self.lagrange = self.cost.lagrange
         self.f_l = Function('f_l', [self.x, self.u], [self.xdot, self.lagrange])
         
+        self.use_shift = use_shift
 
-        frequency = timing["frequency"]
-        self.T = timing["solution_time"]
-        self.N = int(self.T * frequency)
-        self.h = 1 / frequency
+        self.frequency = timing["frequency"]
+        self.T = timing["N"] / self.frequency
+        print("Time for prediction", self.T)
+        self.N = timing["N"]
+        self.h = 1 / self.frequency
 
         self.method = None
         # solver variables
@@ -208,6 +214,16 @@ class solver():
         # DC parameters
         self.degree = timing["degree"]
 
+        # Deviation 
+        self.deviation = None
+        self.step_time = None
+        self.solver_time = None
+        self.total_solution_time = 0
+
+        # control variable to send to drone
+        self.control_list = []
+        
+
     def set_initial_values(self, x_init, x_ref):
         # instantiate the parameters for the start and desired state, decided by user
         self.X_opt_current = np.concatenate((np.array(x_init), np.array([1]), np.zeros(self.nx -3 -1)) ) # change this later when taking actual drone state
@@ -221,6 +237,8 @@ class solver():
         # the values to be passed to the solver 
         
         self.U_opt_current = self.initial_control_guess
+        self.X_opt = self.X_opt_current
+        self.U_opt = self.U_opt_current
 
     def create_dms_solver(self):
         # function call to create dms solver
@@ -450,7 +468,10 @@ class solver():
 
     def solve(self):
         # solve the ocp
+        time_start = time.time()
         sol = self.solver(x0=self.w0, lbx=self.lbw, ubx=self.ubw, lbg=self.lbg, ubg=self.ubg, p=vertcat(self.X_opt_current, self.U_opt_current, self.x_desired))
+        time_end = time.time()
+        self.solver_time = time_end - time_start
         self.w_opt = sol['x'].full().flatten()
         if self.simulation_type == "Open_loop":
             self._extract_solution()
@@ -463,7 +484,17 @@ class solver():
         elif self.method == "DMS":
             self.X_opt_current = self.w_opt[(self.nx +self.nu) : (self.nx + self.nu + self.nx)]
             self.U_opt_current = self.w_opt[(self.nx) : (self.nx + self.nu)]
-
+        self.deviation = np.linalg.norm((self.X_opt_current[:3] - self.x_desired[:3])) # calculate the deviation from the desired state
+        self.X_opt = np.vstack([self.X_opt, self.X_opt_current])                        # save the state trajectory
+        self.U_opt = np.vstack([self.U_opt, self.U_opt_current])   
+        print("Current pose ", self.X_opt_current[:3])                     # save the control input trajectory
+        
+        # set up the inital state for the next iterate
+        if self.use_shift == True:
+            self._shift_initialise()
+        else:
+            self._warm_start()
+    
     def _extract_solution(self):
         if self.method == "DC":
             self.X_opt =np.vstack([self.w_opt[i * (self.nx +self.nu +self.degree * self.nx): i * (self.nx +self.nu +self.degree * self.nx)+self.nx] for i in range(self.N+1)])
@@ -472,6 +503,81 @@ class solver():
             self.X_opt =np.vstack([self.w_opt[i * (self.nx +self.nu): i * (self.nx +self.nu)+self.nx] for i in range(self.N+1)])
             self.U_opt = np.vstack([self.w_opt[i * (self.nx +self.nu)+self.nx: i * (self.nx +self.nu)+self.nx+self.nu] for i in range(self.N)])
 
+    def _shift_initialise(self):
+        if self.method == "DC":
+            self.w0 = np.hstack([self.w_opt[self.nx + self.nu + self.nx * self.degree:], self.w0[:self.nx + self.nu + self.nx * self.degree]])
+        elif self.method == "DMS":
+            self.w0 = np.hstack([self.w_opt[self.nx + self.nu:], self.w0[:self.nx + self.nu]])
+    
+    def _warm_start(self):
+        self.w0 = self.w_opt
+
+    def run_mpc(self, steps, min_deviation):
+        # run the mpc for a certain number of steps
+        stable_state_counter = 0
+        for step in range(steps):
+            step_start = time.time()
+            self.solve()
+            self.extract_next_state()
+            self.generate_control_commands_for_drone()
+            step_end = time.time()
+            self.step_time = step_end - step_start
+            self.total_solution_time += self.step_time
+            print("time for solver in step ", step, " is ", self.solver_time)
+            print("time for step ", step, " is ", self.step_time)
+            if self.deviation < min_deviation:
+                stable_state_counter += 1
+                if stable_state_counter > 10:
+                    print("MPC converged in ", step, " steps")
+                    print("time taken",self.total_solution_time)
+                    break
+               
+            if step == steps - 1:
+                print("MPC did not converge in ", steps, " steps")
+
+    def euler_2_quat(self):
+        pass
+    def quat_2_euler(self): # convert the X_opt_current quats to euler angles
+        q = self.X_opt_current[3:7]
+        w, x, y, z = q
+        R11 = 2*(w*w + x*x) - 1
+        R21 = 2*(x*y - w*z)
+        R31 = 2*(x*z + w*y)
+        R32 = 2*(y*z - w*x)
+        R33 = 2*(w*w + z*z) - 1
+        phi = np.arctan2(R32, R33) # roll
+        theta = -np.arcsin(R31)    # pitch 
+        psi = np.arctan2(R21, R11) # yaw
+        return phi, theta, psi
+    
+    def _rad_2_deg(self, angle):
+        return angle * 180 / pi
+    def _deg_2_rad(self, angle):
+        return angle * pi / 180
+    def _get_thrust(self):
+        # use the mapping from rpm to thrust, for each motor, for the current applied control
+            thrust = 1.0942e-07 * (self.U_opt_current*1000)**2 - 2.1059e-04 * (self.U_opt_current*1000) + 1.5417e-01 # in grams
+            return thrust
+    def _thrust_value_to_drone(self):
+        # get the mapping from the thrust to the integer value to send drone controller ( min = 10001,  max = 60000)
+            # mapping from thrust in grams to the value to send to drone 
+            j = np.sum(self._get_thrust())
+            k = j/(self.max_thrust * 4 )
+            l = k * 50000
+            m = l + 10001
+            return int(m)
+
+    def generate_control_commands_for_drone(self):
+        self.control_list.append(self.control_to_drone())
+        
+    def control_to_drone(self):
+        # the control to the drone is the next setpoint value we want for the following: [ roll, pitch, yaw_rate, thrust]
+        phi, theta, _ = self.quat_2_euler()
+        roll = -1 * self._rad_2_deg(phi) # convert to degree,  since we use radians
+        pitch = 1 * self._rad_2_deg(theta)
+        yaw_rate = self._rad_2_deg(self.X_opt_current[12]) # psi_dot
+        thrust = self._thrust_value_to_drone()
+        return [roll, pitch, yaw_rate, thrust]
 
 def main():
     Q = np.diag([120,
@@ -500,38 +606,85 @@ def main():
                     "u_min" : [ 0, 0, 0, 0],
                     "u_max" : [ 22, 22, 22, 22]}
 
-    nlp_opts = {"ipopt": {"max_iter": 1000, "print_level" :5}}
+    nlp_opts = {"ipopt": {"max_iter": 3000, "print_level" :0}, "print_time":0}
     cost_type = "slack"      # use slack variables for the terminal cost          
-
-    timing = { "frequency" : 50,         # sampling frequency
-                "solution_time" : 0.1,     # real world time to navigate the drone
+    # time for dms closed loop
+    dms_timing = { "frequency" : 50,         # sampling frequency
+                "solution_time" : 0.1,      # real world time to navigate the drone
+                "N" : 10    ,   
                 "DMS_RK4_step_size" : 2, # step size of RK4 method for DMS
-                "degree" : 2}           # degree of the collocation polynomial  
+                "degree" : 2,
+                "step_multiplier":2}           # degree of the collocation polynomial  
+    # time for dc closed loop
+    dc_timing = { "frequency" : 50,         # sampling frequency
+                "solution_time" : 0.1, 
+                "N" : 15   , # real world time to navigate the drone
+                "DMS_RK4_step_size" : 2, # step size of RK4 method for DMS
+                "degree" : 3,
+                "step_multiplier":10}       
 
+    min_deviation = 0.05
     # initialise class objects for the solvers
-    dms_open_loop = solver(timing, solver_bounds, nlp_opts, Q, R, cost_type )  # open loop by default
-    dc_open_loop = solver(timing, solver_bounds, nlp_opts, Q, R, cost_type )
-    # dms_closed_loop = solver(timing, solver_bounds, nlp_opts, Q, R, cost_type, simulation_type = None) 
-    # dc_closed_loop = solver(timing, solver_bounds, nlp_opts, Q, R, cost_type, simulation_type = None)     
+    dms_open_loop = solver(dms_timing, solver_bounds, nlp_opts, Q, R, cost_type )  # open loop by default
+    dc_open_loop = solver(dc_timing, solver_bounds, nlp_opts, Q, R, cost_type = False)
+    dms_closed_loop = solver(dms_timing, solver_bounds, nlp_opts, Q, R, cost_type, simulation_type = None) 
+    dc_closed_loop = solver(dc_timing, solver_bounds, nlp_opts, Q, R, cost_type = False, simulation_type = None,use_shift=True)    
     
-    x_start = [ 0, 0, 0.3]
-    x_desired = [0.3, 0.3, 0.3]
+    x_start = [ 0, 0, 0.0]
+    x_desired = [0.4, 0.4, 0.4]
     ################################################
     # Simulate open loop for DMS 
 
-    dms_open_loop.set_initial_values(x_start, x_desired)
-    dms_open_loop.create_dms_solver()
-    dms_open_loop.solve()
-    # ("DMS solved")
-    print(dms_open_loop.X_opt)
-    print(dms_open_loop.U_opt)
+    # dms_open_loop.set_initial_values(x_start, x_desired)
+    # dms_open_loop.create_dms_solver()
+    # dms_open_loop.solve()
+    # # ("DMS solved")
+    # # print(dms_open_loop.X_opt)
+    # # print(dms_open_loop.U_opt)
 
-    # dc_open_loop.set_initial_values(x_start, x_desired)
-    # # dc_open_loop.initial_state_guess = np.zeros((13,))
-    # dc_open_loop.create_dc_solver()
-    # dc_open_loop.solve()
+    dc_open_loop.set_initial_values(x_start, x_desired)
+    # dc_open_loop.initial_state_guess = np.zeros((13,))
+    dc_open_loop.create_dc_solver()
+    dc_open_loop.solve()
     # print(dc_open_loop.X_opt)
     # print(dc_open_loop.U_opt)
+
+    # dms_closed_loop.set_initial_values(x_start, x_desired)
+    # dms_closed_loop.create_dms_solver()
+    # dms_closed_loop.run_mpc(100, min_deviation)
+    # # print(dms_closed_loop.X_opt[:, :3])
+    # # print(dms_closed_loop.U_opt)
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111, projection='3d')
+    # ax.plot(dms_closed_loop.X_opt[:, 0], dms_closed_loop.X_opt[:, 1], dms_closed_loop.X_opt[:, 2])
+    # plt.show()
+    # time.sleep(2)
+    # plt.close()
+
+    dc_closed_loop.set_initial_values(x_start, x_desired)
+    dc_closed_loop.create_dc_solver()
+    dc_closed_loop.run_mpc(100, min_deviation)
+    # print(dc_closed_loop.X_opt[:, :3])
+    # print(dc_closed_loop.U_opt)
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot(dc_closed_loop.X_opt[:, 0], dc_closed_loop.X_opt[:, 1], dc_closed_loop.X_opt[:, 2])
+    plt.show()
+    time.sleep(2)
+    plt.close()
+    # print(dc_closed_loop.control_list)
+    # convert dc_closed_loop.control list to array 
+    control_array = dc_closed_loop.control_list
+    print(len(control_array))
+    
+    # save control array to a text file
+    with open('formatted_code/control_array.txt', 'w') as f:
+        for item in control_array:
+            f.write("%s " % item[0])
+            f.write("%s " % item[1])
+            f.write("%s " % item[2])
+            f.write("%s " % item[3])
+
 
 
 if __name__=="__main__":
