@@ -18,7 +18,7 @@ class dynamics:
         self.dq  = 65e-3      # [m] distance between motors' center
         self.l   = self.dq/2       # [m] distance between motors' center and the axis of rotation
         # self.hover_speed = np.sqrt(self.mq * self.g0 / (4 * self.Ct)) # [krpm] hover speed
-        self.hover_speed = 18.1795 # [krpm] hover speed
+        self.hover_speed = 15.1795 # [krpm] hover speed
         self.max_speed = 22 # [krpm] max speed
         # define state variables
     #    define the casadi variables for the system dynamics
@@ -222,6 +222,10 @@ class solver():
 
         # control variable to send to drone
         self.control_list = []
+        self.phi_list = []
+        self.theta_list = []
+        self.psi_list = []
+
         
 
     def set_initial_values(self, x_init, x_ref):
@@ -487,7 +491,7 @@ class solver():
         self.deviation = np.linalg.norm((self.X_opt_current[:3] - self.x_desired[:3])) # calculate the deviation from the desired state
         self.X_opt = np.vstack([self.X_opt, self.X_opt_current])                        # save the state trajectory
         self.U_opt = np.vstack([self.U_opt, self.U_opt_current])   
-        print("Current pose ", self.X_opt_current[:3])                     # save the control input trajectory
+        # print("Current pose ", self.X_opt_current[:3])                     # save the control input trajectory
         
         # set up the inital state for the next iterate
         if self.use_shift == True:
@@ -548,6 +552,9 @@ class solver():
         phi = np.arctan2(R32, R33) # roll
         theta = -np.arcsin(R31)    # pitch 
         psi = np.arctan2(R21, R11) # yaw
+        self.phi_list = np.append(self.phi_list, self._rad_2_deg(phi))
+        self.theta_list = np.append(self.theta_list, self._rad_2_deg(theta))
+        self.psi_list = np.append(self.psi_list, self._rad_2_deg(psi))
         return phi, theta, psi
     
     def _rad_2_deg(self, angle):
@@ -593,7 +600,7 @@ def main():
              1e-2,
              1e-2,
              1e-2])
-    R = np.diag([1, 1, 1, 1])*0.06
+    R = np.diag([1, 1, 1, 1])*0.1
 
     solver_bounds = {"upper_pose_limit":[1, 1, 1.5],
                     "lower_pose_limit":[0, 0, 0],
@@ -606,7 +613,7 @@ def main():
                     "u_min" : [ 0, 0, 0, 0],
                     "u_max" : [ 22, 22, 22, 22]}
 
-    nlp_opts = {"ipopt": {"max_iter": 3000, "print_level" :0}, "print_time":0}
+    nlp_opts = {"ipopt": {"max_iter": 3000, "print_level" :5}, "print_time":0}
     cost_type = "slack"      # use slack variables for the terminal cost          
     # time for dms closed loop
     dms_timing = { "frequency" : 50,         # sampling frequency
@@ -665,7 +672,7 @@ def main():
     dc_closed_loop.create_dc_solver()
     dc_closed_loop.run_mpc(100, min_deviation)
     # print(dc_closed_loop.X_opt[:, :3])
-    # print(dc_closed_loop.U_opt)
+    print(dc_closed_loop.U_opt)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     ax.plot(dc_closed_loop.X_opt[:, 0], dc_closed_loop.X_opt[:, 1], dc_closed_loop.X_opt[:, 2])
@@ -685,6 +692,14 @@ def main():
             f.write("%s " % item[2])
             f.write("%s " % item[3])
 
+    with open('formatted_code/angle_list.txt', 'w') as f:
+        for item in dc_closed_loop.phi_list, dc_closed_loop.theta_list, dc_closed_loop.psi_list:
+            f.write("%s " % item)
+
+    with open('formatted_code/quaternion_list.txt', 'w') as f:
+        for item in dc_closed_loop.X_opt[:,3:7]:
+            f.write("%s " % item)
+            
 
 
 if __name__=="__main__":

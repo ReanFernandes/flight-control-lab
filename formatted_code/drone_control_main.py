@@ -56,7 +56,7 @@ uri = uri_helper.uri_from_env(default='radio://0/80/2M/E7E7E7E7E7')
 # ]
 def extract_control_input():
     control_input  = np.loadtxt('formatted_code/control_array.txt')
-    control_input = control_input.reshape(31,4)
+    control_input = control_input.reshape(29,4)
     return control_input.tolist()
 
 sequence = extract_control_input()
@@ -153,7 +153,7 @@ def run_sequence(scf, sequence):
                                                 position[1],
                                                 position[2],
                                                 int(position[3]))
-            time.sleep(0.2)
+            time.sleep(1)
 
     cf.commander.send_stop_setpoint()
     # Make sure that the last packet leaves before the link is closed
