@@ -56,7 +56,7 @@ uri = uri_helper.uri_from_env(default='radio://0/80/2M/E7E7E7E7E7')
 # ]
 def extract_control_input():
     control_input  = np.loadtxt('formatted_code/control_array.txt')
-    control_input = control_input.reshape(29,4)
+    control_input = control_input.reshape(100,4)
     return control_input.tolist()
 
 sequence = extract_control_input()
@@ -148,12 +148,12 @@ def run_sequence(scf, sequence):
     cf.commander.send_setpoint(0,0,0,0) # unlock thrust control
     for position in sequence:
         # print('Setting position {}'.format(position))
-        for i in range(27):
+        for i in range(29):
             cf.commander.send_setpoint(position[0],
                                                 position[1],
                                                 position[2],
                                                 int(position[3]))
-            time.sleep(1)
+            time.sleep(0.75)
 
     cf.commander.send_stop_setpoint()
     # Make sure that the last packet leaves before the link is closed

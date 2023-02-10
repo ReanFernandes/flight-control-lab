@@ -531,7 +531,7 @@ class solver():
             print("time for step ", step, " is ", self.step_time)
             if self.deviation < min_deviation:
                 stable_state_counter += 1
-                if stable_state_counter > 10:
+                if stable_state_counter > 25:
                     print("MPC converged in ", step, " steps")
                     print("time taken",self.total_solution_time)
                     break
@@ -613,7 +613,7 @@ def main():
                     "u_min" : [ 0, 0, 0, 0],
                     "u_max" : [ 22, 22, 22, 22]}
 
-    nlp_opts = {"ipopt": {"max_iter": 3000, "print_level" :5}, "print_time":0}
+    nlp_opts = {"ipopt": {"max_iter": 3000, "print_level" :0}, "print_time":0}
     cost_type = "slack"      # use slack variables for the terminal cost          
     # time for dms closed loop
     dms_timing = { "frequency" : 50,         # sampling frequency
@@ -638,7 +638,7 @@ def main():
     dc_closed_loop = solver(dc_timing, solver_bounds, nlp_opts, Q, R, cost_type = False, simulation_type = None,use_shift=True)    
     
     x_start = [ 0, 0, 0.0]
-    x_desired = [0.4, 0.4, 0.4]
+    x_desired = [0.3, 0.4, 0.4]
     ################################################
     # Simulate open loop for DMS 
 
@@ -648,7 +648,7 @@ def main():
     # # ("DMS solved")
     # # print(dms_open_loop.X_opt)
     # # print(dms_open_loop.U_opt)
-
+    
     dc_open_loop.set_initial_values(x_start, x_desired)
     # dc_open_loop.initial_state_guess = np.zeros((13,))
     dc_open_loop.create_dc_solver()
