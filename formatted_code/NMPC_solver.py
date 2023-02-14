@@ -215,7 +215,7 @@ class solver():
         self.degree = timing["degree"]
 
         # Deviation 
-        self.deviation = None
+        self.deviation = 100 # starting
         self.step_time = None
         self.solver_time = None
         self.total_solution_time = 0
@@ -236,10 +236,23 @@ class solver():
         # instantiate the initial guess for state and control
         # self.initial_state_guess= self.X_opt_current
         # self.initial_control_guess = np.array([self.max_speed, self.max_speed, self.max_speed, self.max_speed])
-        self.initial_state_guess = [0.001,0.001,0.001,1,0.1,.1,.1,0.01,0.01,0.01,0.010,.01,0.01]
-        self.initial_control_guess = [self.hover_speed] * 4
+        self.initial_state_guess = [0.001,0.001,0.001,1,0.1,0.1,0.1,0.01,0.01,0.01,0.010,.01,0.01]
+        self.initial_control_guess = [self.max_speed] * 4
         # the values to be passed to the solver 
         
+        self.U_opt_current = self.initial_control_guess
+        self.X_opt = self.X_opt_current
+        self.U_opt = self.U_opt_current
+
+    def hardware_set_initial_values(self, x_init, x_ref):
+        self.X_opt_current = np.array(x_init)
+        self.x_desired = np.concatenate((np.array(x_ref), np.array([1]), np.zeros(self.nx -3 -1)) ) 
+
+        # self.initial_state_guess = [0.001,0.001,0.001,1,0.1,.1,.1,0.01,0.01,0.01,0.010,.01,0.01]
+
+        self.initial_state_guess = self.X_opt_current.tolist()
+        self.initial_control_guess = [self.hover_speed] * 4
+
         self.U_opt_current = self.initial_control_guess
         self.X_opt = self.X_opt_current
         self.U_opt = self.U_opt_current
@@ -473,7 +486,7 @@ class solver():
     def solve(self):
         # solve the ocp
         time_start = time.time()
-        sol = self.solver(x0=self.w0, lbx=self.lbw, ubx=self.ubw, lbg=self.lbg, ubg=self.ubg, p=vertcat(self.X_opt_current, self.U_opt_current, self.x_desired))
+        sol = self.solver(x0=self.w0, lbx=self.lbw, ubx=self.ubw, lbg=self.lbg, ubg=self.ubg, p=vertcat(self.X_opt_current, self.initial_control_guess, self.x_desired))
         time_end = time.time()
         self.solver_time = time_end - time_start
         self.w_opt = sol['x'].full().flatten()
@@ -519,7 +532,7 @@ class solver():
     def run_mpc(self, steps, min_deviation):
         # run the mpc for a certain number of steps
         stable_state_counter = 0
-        for step in range(steps):
+        for step in range(2, steps):
             step_start = time.time()
             self.solve()
             self.extract_next_state()
@@ -531,7 +544,7 @@ class solver():
             print("time for step ", step, " is ", self.step_time)
             if self.deviation < min_deviation:
                 stable_state_counter += 1
-                if stable_state_counter > 25:
+                if stable_state_counter > 5:
                     print("MPC converged in ", step, " steps")
                     print("time taken",self.total_solution_time)
                     break
@@ -579,12 +592,14 @@ class solver():
         
     def control_to_drone(self):
         # the control to the drone is the next setpoint value we want for the following: [ roll, pitch, yaw_rate, thrust]
-        phi, theta, _ = self.quat_2_euler()
+        phi, theta, _= self.quat_2_euler()
         roll = -1 * self._rad_2_deg(phi) # convert to degree,  since we use radians
         pitch = 1 * self._rad_2_deg(theta)
         yaw_rate = self._rad_2_deg(self.X_opt_current[12]) # psi_dot
         thrust = self._thrust_value_to_drone()
         return [roll, pitch, yaw_rate, thrust]
+
+
 
 def main():
     Q = np.diag([120,
@@ -603,21 +618,23 @@ def main():
     R = np.diag([1, 1, 1, 1])*0.1
 
     solver_bounds = {"upper_pose_limit":[1, 1, 1.5],
-                    "lower_pose_limit":[0, 0, 0],
-                    "upper_vel_limit":[10, 10, 10],
-                    "lower_vel_limit":[-10, -10, -10],
-                    "upper_att_limit":[1,1,1,1],
-                    "lower_att_limit":[0,-1,-1,-1],
+                    "lower_pose_limit":[-1, -1, 0],
+                    "upper_vel_limit":[2.5, 2.5, 2.5],
+                    "lower_vel_limit":[-2.5, -2.5, -2.5],
+                    "upper_att_limit": [inf]*4,#[1,1,1,1],
+                    "lower_att_limit":[-inf]*4,#[0,-1,-1,-1],
                     "upper_ang_limit":[10, 10, 10],
                     "lower_ang_limit":[-10, -10, -10],
                     "u_min" : [ 0, 0, 0, 0],
                     "u_max" : [ 22, 22, 22, 22]}
 
-    nlp_opts = {"ipopt": {"max_iter": 3000, "print_level" :0}, "print_time":0}
+    nlp_opts = {"ipopt": {"max_iter": 3000, "print_level" :0}, "jit": False, "print_time":0}
+    # nlp_opts = {"max_iter":1}
+    # nlp_opts = {"qpsol_options": {"max_iter":20}}
     cost_type = "slack"      # use slack variables for the terminal cost          
     # time for dms closed loop
     dms_timing = { "frequency" : 50,         # sampling frequency
-                "solution_time" : 0.1,      # real world time to navigate the drone
+                # "solution_time" : 0.05,      # real world time to navigate the drone
                 "N" : 10    ,   
                 "DMS_RK4_step_size" : 2, # step size of RK4 method for DMS
                 "degree" : 2,
@@ -637,7 +654,7 @@ def main():
     dms_closed_loop = solver(dms_timing, solver_bounds, nlp_opts, Q, R, cost_type, simulation_type = None) 
     dc_closed_loop = solver(dc_timing, solver_bounds, nlp_opts, Q, R, cost_type = False, simulation_type = None,use_shift=True)    
     
-    x_start = [ 0, 0, 0.0]
+    x_start = [ 0, 0.0, 0.0]
     x_desired = [0.3, 0.4, 0.4]
     ################################################
     # Simulate open loop for DMS 
@@ -645,60 +662,60 @@ def main():
     # dms_open_loop.set_initial_values(x_start, x_desired)
     # dms_open_loop.create_dms_solver()
     # dms_open_loop.solve()
-    # # ("DMS solved")
-    # # print(dms_open_loop.X_opt)
-    # # print(dms_open_loop.U_opt)
+    # ("DMS solved")
+    # print(dms_open_loop.X_opt)
+    # print(dms_open_loop.U_opt)
     
-    dc_open_loop.set_initial_values(x_start, x_desired)
-    # dc_open_loop.initial_state_guess = np.zeros((13,))
-    dc_open_loop.create_dc_solver()
-    dc_open_loop.solve()
-    # print(dc_open_loop.X_opt)
-    # print(dc_open_loop.U_opt)
+    # dc_open_loop.set_initial_values(x_start, x_desired)
+    # # dc_open_loop.initial_state_guess = np.zeros((13,))
+    # dc_open_loop.create_dc_solver()
+    # dc_open_loop.solve()
+    # # print(dc_open_loop.X_opt)
+    # # print(dc_open_loop.U_opt)
 
-    # dms_closed_loop.set_initial_values(x_start, x_desired)
-    # dms_closed_loop.create_dms_solver()
-    # dms_closed_loop.run_mpc(100, min_deviation)
-    # # print(dms_closed_loop.X_opt[:, :3])
-    # # print(dms_closed_loop.U_opt)
-    # fig = plt.figure()
-    # ax = fig.add_subplot(111, projection='3d')
-    # ax.plot(dms_closed_loop.X_opt[:, 0], dms_closed_loop.X_opt[:, 1], dms_closed_loop.X_opt[:, 2])
-    # plt.show()
-    # time.sleep(2)
-    # plt.close()
-
-    dc_closed_loop.set_initial_values(x_start, x_desired)
-    dc_closed_loop.create_dc_solver()
-    dc_closed_loop.run_mpc(100, min_deviation)
-    # print(dc_closed_loop.X_opt[:, :3])
-    print(dc_closed_loop.U_opt)
+    dms_closed_loop.set_initial_values(x_start, x_desired)
+    dms_closed_loop.create_dms_solver()
+    dms_closed_loop.run_mpc(100, min_deviation)
+    # print(dms_closed_loop.X_opt[:, :3])
+    # print(dms_closed_loop.U_opt)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    ax.plot(dc_closed_loop.X_opt[:, 0], dc_closed_loop.X_opt[:, 1], dc_closed_loop.X_opt[:, 2])
+    ax.plot(dms_closed_loop.X_opt[:, 0], dms_closed_loop.X_opt[:, 1], dms_closed_loop.X_opt[:, 2])
     plt.show()
     time.sleep(2)
     plt.close()
-    # print(dc_closed_loop.control_list)
-    # convert dc_closed_loop.control list to array 
-    control_array = dc_closed_loop.control_list
-    print(len(control_array))
+
+    # dc_closed_loop.set_initial_values(x_start, x_desired)
+    # dc_closed_loop.create_dc_solver()
+    # dc_closed_loop.run_mpc(100, min_deviation)
+    # # print(dc_closed_loop.X_opt[:, :3])
+    # print(dc_closed_loop.U_opt)
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111, projection='3d')
+    # ax.plot(dc_closed_loop.X_opt[:, 0], dc_closed_loop.X_opt[:, 1], dc_closed_loop.X_opt[:, 2])
+    # plt.show()
+    # time.sleep(2)
+    # plt.close()
+    # # print(dc_closed_loop.control_list)
+    # # convert dc_closed_loop.control list to array 
+    # control_array = dc_closed_loop.control_list
+    # print(len(control_array))
     
-    # save control array to a text file
-    with open('formatted_code/control_array.txt', 'w') as f:
-        for item in control_array:
-            f.write("%s " % item[0])
-            f.write("%s " % item[1])
-            f.write("%s " % item[2])
-            f.write("%s " % item[3])
+    # # save control array to a text file
+    # with open('formatted_code/control_array.txt', 'w') as f:
+    #     for item in control_array:
+    #         f.write("%s " % item[0])
+    #         f.write("%s " % item[1])
+    #         f.write("%s " % item[2])
+    #         f.write("%s " % item[3])
 
-    with open('formatted_code/angle_list.txt', 'w') as f:
-        for item in dc_closed_loop.phi_list, dc_closed_loop.theta_list, dc_closed_loop.psi_list:
-            f.write("%s " % item)
+    # with open('formatted_code/angle_list.txt', 'w') as f:
+    #     for item in dc_closed_loop.phi_list, dc_closed_loop.theta_list, dc_closed_loop.psi_list:
+    #         f.write("%s " % item)
 
-    with open('formatted_code/quaternion_list.txt', 'w') as f:
-        for item in dc_closed_loop.X_opt[:,3:7]:
-            f.write("%s " % item)
+    # with open('formatted_code/quaternion_list.txt', 'w') as f:
+        # for item in dc_closed_loop.X_opt[:,3:7]:
+            # f.write("%s " % item)
             
 
 
